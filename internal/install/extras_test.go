@@ -130,6 +130,13 @@ func TestApplyExtrasConfiguresSelectedCodegraphIdempotently(t *testing.T) {
 	if !strings.Contains(agents, "# Existing rules") {
 		t.Error("CodeGraph guidance update dropped existing AGENTS.md content")
 	}
+	backups, err := filepath.Glob(opencodePath + ".bak-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 2 {
+		t.Errorf("expected each opencode.json write to preserve its own backup, got %d", len(backups))
+	}
 }
 
 func TestApplyExtrasInstallsCodegraphWhenMissing(t *testing.T) {

@@ -114,8 +114,8 @@ func writeJSON(targetPath string, config map[string]any, previous []byte) ([]str
 
 	var done []string
 	if previous != nil {
-		backup := targetPath + ".bak-" + time.Now().Format("20060102-150405")
-		if err := os.WriteFile(backup, previous, 0o644); err != nil {
+		backup, err := writeBackup(targetPath, previous)
+		if err != nil {
 			return nil, fmt.Errorf("writing backup: %w", err)
 		}
 		done = append(done, "backup    "+backup)
@@ -128,6 +128,32 @@ func writeJSON(targetPath string, config map[string]any, previous []byte) ([]str
 	}
 	done = append(done, "escrito   "+targetPath)
 	return done, nil
+}
+
+func writeBackup(targetPath string, content []byte) (string, error) {
+	pattern := filepath.Base(targetPath) + ".bak-" + time.Now().Format("20060102-150405") + "-*"
+	backup, err := os.CreateTemp(filepath.Dir(targetPath), pattern)
+	if err != nil {
+		return "", err
+	}
+	backupPath := backup.Name()
+	cleanup := func() {
+		_ = backup.Close()
+		_ = os.Remove(backupPath)
+	}
+	if err := backup.Chmod(0o644); err != nil {
+		cleanup()
+		return "", err
+	}
+	if _, err := backup.Write(content); err != nil {
+		cleanup()
+		return "", err
+	}
+	if err := backup.Close(); err != nil {
+		_ = os.Remove(backupPath)
+		return "", err
+	}
+	return backupPath, nil
 }
 
 // merge deep-merges src into dst: maps merge recursively, arrays union
