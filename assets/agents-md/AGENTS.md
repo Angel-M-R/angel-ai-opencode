@@ -15,6 +15,12 @@
 
 Generated artifacts — code, identifiers, comments, commit messages, PR descriptions, UI copy, any string literal — default to English regardless of the conversation language, unless the user explicitly asks for another language for that artifact, or the existing project clearly uses another language and you are extending it.
 
+## Near-YOLO permission scope
+
+- The managed safety policy applies only when OpenCode's native Bash or read permissions directly match the requested command or path.
+- Bash indirection, wrappers, aliases, scripts, and alternate tools can bypass these native matches; do not represent the policy as a sandbox or complete containment boundary.
+- Every future Bash-capable agent must include the canonical permission matrix explicitly before it is considered covered. Coverage is never inherited implicitly.
+
 ## Contextual Skill Loading (MANDATORY)
 
 The `<available_skills>` block in your system prompt is authoritative — it lists every skill installed for this session.
