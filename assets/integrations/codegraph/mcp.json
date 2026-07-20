@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "codegraph": {
+      "command": [
+        "codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "enabled": true,
+      "type": "local"
+    }
+  }
+}

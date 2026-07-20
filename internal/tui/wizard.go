@@ -258,7 +258,7 @@ func (m Model) View() string {
 		b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
 	case extrasPhase:
 		b.WriteString(stepStyle.Render(fmt.Sprintf("Paso %d/%d", len(m.categories)+1, m.totalSteps())))
-		b.WriteString("  " + titleStyle.Render("Extras de la TUI") + "\n\n")
+		b.WriteString("  " + titleStyle.Render("Integraciones y extras") + "\n\n")
 		for j, extra := range m.extras {
 			cursor := "  "
 			if j == m.cursor {
@@ -291,7 +291,7 @@ func (m Model) View() string {
 					count++
 				}
 			}
-			b.WriteString(fmt.Sprintf("  Extras de la TUI: %s\n", selectedCount.Render(fmt.Sprintf("%d/%d", count, len(m.extras)))))
+			b.WriteString(fmt.Sprintf("  Integraciones y extras: %s\n", selectedCount.Render(fmt.Sprintf("%d/%d", count, len(m.extras)))))
 		}
 		plan := install.Plan(m.chosen(), m.configDir)
 		plan = append(plan, install.PlanExtras(m.chosenExtras(), m.configDir)...)

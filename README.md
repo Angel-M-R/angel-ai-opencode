@@ -43,6 +43,7 @@ que tocarlo para cambiar contenido:
 | `assets/themes/*.json` | Temas | `~/.config/opencode/themes/` |
 | `assets/agents-md/AGENTS.md` | Reglas globales de comportamiento | `~/.config/opencode/AGENTS.md` |
 | `assets/fragments/*.json` | Trozos de `opencode.json` (MCP, permisos, ajustes) que se mergean sobre el existente | `~/.config/opencode/opencode.json` |
+| `assets/integrations/codegraph/*` | Configuración MCP y reglas que solo se aplican cuando se selecciona CodeGraph | `opencode.json` y `AGENTS.md` |
 | `assets/tui-plugins/*` | Plugins de la TUI de opencode (logo, etc.) | vía los 3 toggles del paso final del wizard, no escaneo directo |
 
 Por ejemplo, para cambiar el system prompt del orquestador: editar
@@ -53,4 +54,19 @@ detecta solo.
 ## Prerequisitos en la máquina destino
 
 - [opencode](https://opencode.ai)
+- `npm`, necesario si se selecciona CodeGraph y el instalador debe instalar su CLI
 - CLI de OpenSpec: `npm i -g @fission-ai/openspec` (los skills `openspec-*` lo invocan)
+
+## Integraciones opcionales
+
+El paso **Integraciones y extras** permite activar o desactivar CodeGraph. Si se
+selecciona, el instalador:
+
+1. reutiliza `codegraph` cuando ya está disponible en `PATH` o instala
+   `@colbymchenry/codegraph@latest` globalmente mediante npm;
+2. registra `codegraph serve --mcp` como MCP local en `opencode.json`;
+3. añade a `AGENTS.md` las reglas de uso e inicialización por proyecto.
+
+Si CodeGraph se desmarca, no se instala el CLI ni se añaden su MCP o sus reglas.
+Context7 permanece configurado por separado como MCP remoto y no necesita un
+binario local.
