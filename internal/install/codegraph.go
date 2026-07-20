@@ -26,6 +26,11 @@ func applyCodegraph(assetsDir, configDir string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading CodeGraph agent guidance: %w", err)
 	}
+	agentsPath := filepath.Join(configDir, "AGENTS.md")
+	renderedGuidance, _, err := renderCodegraphGuidance(agentsPath, string(guidance))
+	if err != nil {
+		return nil, err
+	}
 
 	installLine, err := ensureCodegraphInstalled()
 	if err != nil {
@@ -35,18 +40,67 @@ func applyCodegraph(assetsDir, configDir string) ([]string, error) {
 
 	opencodePath := filepath.Join(configDir, "opencode.json")
 	lines, err := mergeJSON(opencodePath, "https://opencode.ai/config.json", []map[string]any{patch})
-	done = append(done, "merge     codegraph MCP")
 	done = append(done, lines...)
 	if err != nil {
 		return done, err
 	}
+	done = append(done, "merge     codegraph MCP")
 
-	agentsPath := filepath.Join(configDir, "AGENTS.md")
-	if err := upsertCodegraphGuidance(agentsPath, string(guidance)); err != nil {
+	if err := writeCodegraphGuidance(agentsPath, renderedGuidance); err != nil {
 		return done, err
 	}
 	done = append(done, "actualizado "+agentsPath)
 	return done, nil
+}
+
+func removeCodegraph(configDir string) ([]string, error) {
+	agentsPath := filepath.Join(configDir, "AGENTS.md")
+	renderedGuidance, guidanceChanged, err := renderCodegraphGuidance(agentsPath, "")
+	if err != nil {
+		return nil, err
+	}
+
+	done, mcpChanged, err := removeCodegraphMCP(filepath.Join(configDir, "opencode.json"))
+	if err != nil {
+		return done, err
+	}
+	if mcpChanged {
+		done = append(done, "eliminado  codegraph MCP")
+	}
+	if guidanceChanged {
+		if err := writeCodegraphGuidance(agentsPath, renderedGuidance); err != nil {
+			return done, err
+		}
+		done = append(done, "eliminado  CodeGraph de "+agentsPath)
+	}
+	return done, nil
+}
+
+func removeCodegraphMCP(path string) ([]string, bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	var config map[string]any
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return nil, false, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	mcp, ok := config["mcp"].(map[string]any)
+	if !ok {
+		return nil, false, nil
+	}
+	if _, ok := mcp["codegraph"]; !ok {
+		return nil, false, nil
+	}
+	delete(mcp, "codegraph")
+	if len(mcp) == 0 {
+		delete(config, "mcp")
+	}
+	lines, err := writeJSON(path, config, raw)
+	return lines, err == nil, err
 }
 
 func ensureCodegraphInstalled() (string, error) {
@@ -73,44 +127,57 @@ func ensureCodegraphInstalled() (string, error) {
 	return "instalado  " + codegraphPackage, nil
 }
 
-func upsertCodegraphGuidance(path, guidance string) error {
+func renderCodegraphGuidance(path, guidance string) ([]byte, bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reading %s: %w", path, err)
+		return nil, false, fmt.Errorf("reading %s: %w", path, err)
 	}
 
 	content := string(raw)
+	original := content
 	for _, markers := range [][2]string{
 		{"<!-- codegraph-guidance -->", "<!-- /codegraph-guidance -->"},
 		{"<!-- gentle-ai:codegraph-guidance -->", "<!-- /gentle-ai:codegraph-guidance -->"},
 	} {
-		content = removeManagedBlock(content, markers[0], markers[1])
+		content, err = removeManagedBlock(content, markers[0], markers[1])
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	if guidance == "" && content == original {
+		return nil, false, nil
 	}
 	content = strings.TrimSpace(content)
 	guidance = strings.TrimSpace(guidance)
-	if content != "" {
+	if content != "" && guidance != "" {
 		content += "\n\n"
 	}
-	content += guidance + "\n"
+	content += guidance
+	if content != "" {
+		content += "\n"
+	}
+	return []byte(content), content != original, nil
+}
 
+func writeCodegraphGuidance(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, content, 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil
 }
 
-func removeManagedBlock(content, startMarker, endMarker string) string {
+func removeManagedBlock(content, startMarker, endMarker string) (string, error) {
 	for {
 		start := strings.Index(content, startMarker)
 		if start < 0 {
-			return content
+			return content, nil
 		}
 		endOffset := strings.Index(content[start+len(startMarker):], endMarker)
 		if endOffset < 0 {
-			return content
+			return "", fmt.Errorf("unterminated managed block %q in AGENTS.md", startMarker)
 		}
 		end := start + len(startMarker) + endOffset + len(endMarker)
 		before := strings.TrimRight(content[:start], "\n")

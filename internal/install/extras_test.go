@@ -41,27 +41,44 @@ func writeExecutable(t *testing.T, path, content string) {
 	}
 }
 
-func TestApplyExtrasSkipsCodegraphWhenNotSelected(t *testing.T) {
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestApplyExtrasRemovesManagedCodegraphWhenNotSelected(t *testing.T) {
 	assets := codegraphAssets(t)
 	target := t.TempDir()
 	opencodePath := filepath.Join(target, "opencode.json")
 	agentsPath := filepath.Join(target, "AGENTS.md")
-	write(t, opencodePath, `{"mcp":{"context7":{"type":"remote"}}}`)
-	write(t, agentsPath, "# Existing rules\n")
+	write(t, opencodePath, `{"mcp":{"context7":{"type":"remote"},"codegraph":{"type":"local"}}}`)
+	write(t, agentsPath, "# Existing rules\n\n"+codegraphGuidance+"\n")
 
-	beforeConfig, _ := os.ReadFile(opencodePath)
-	beforeAgents, _ := os.ReadFile(agentsPath)
 	if _, err := install.ApplyExtras(map[string]bool{"codegraph": false}, assets, target); err != nil {
 		t.Fatal(err)
 	}
-	afterConfig, _ := os.ReadFile(opencodePath)
-	afterAgents, _ := os.ReadFile(agentsPath)
 
-	if string(afterConfig) != string(beforeConfig) {
-		t.Error("unselected CodeGraph changed opencode.json")
+	var config map[string]any
+	if err := json.Unmarshal(readFile(t, opencodePath), &config); err != nil {
+		t.Fatal(err)
 	}
-	if string(afterAgents) != string(beforeAgents) {
-		t.Error("unselected CodeGraph changed AGENTS.md")
+	mcp := config["mcp"].(map[string]any)
+	if _, ok := mcp["context7"]; !ok {
+		t.Error("deselecting CodeGraph removed the unrelated Context7 MCP")
+	}
+	if _, ok := mcp["codegraph"]; ok {
+		t.Error("deselecting CodeGraph left its managed MCP configured")
+	}
+	agents := string(readFile(t, agentsPath))
+	if !strings.Contains(agents, "# Existing rules") {
+		t.Error("deselecting CodeGraph dropped unrelated AGENTS.md content")
+	}
+	if strings.Contains(agents, "codegraph-guidance") {
+		t.Error("deselecting CodeGraph left its managed guidance in AGENTS.md")
 	}
 }
 
@@ -91,12 +108,8 @@ func TestApplyExtrasConfiguresSelectedCodegraphIdempotently(t *testing.T) {
 		}
 	}
 
-	rawConfig, err := os.ReadFile(opencodePath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var config map[string]any
-	if err := json.Unmarshal(rawConfig, &config); err != nil {
+	if err := json.Unmarshal(readFile(t, opencodePath), &config); err != nil {
 		t.Fatal(err)
 	}
 	mcp := config["mcp"].(map[string]any)
@@ -107,11 +120,7 @@ func TestApplyExtrasConfiguresSelectedCodegraphIdempotently(t *testing.T) {
 		t.Error("CodeGraph integration did not register the local MCP")
 	}
 
-	rawAgents, err := os.ReadFile(agentsPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	agents := string(rawAgents)
+	agents := string(readFile(t, agentsPath))
 	if strings.Count(agents, "<!-- codegraph-guidance -->") != 1 {
 		t.Errorf("expected one CodeGraph guidance block, got:\n%s", agents)
 	}
@@ -143,13 +152,27 @@ printf '#!/bin/sh\nexit 0\n' > "$FAKE_BIN/codegraph"
 	if _, err := install.ApplyExtras(map[string]bool{"codegraph": true}, assets, target); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(commandLog)
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := readFile(t, commandLog)
 	args := strings.Fields(string(raw))
 	want := []string{"install", "--global", "@colbymchenry/codegraph@latest"}
 	if strings.Join(args, " ") != strings.Join(want, " ") {
 		t.Errorf("unexpected npm arguments: got %v, want %v", args, want)
+	}
+}
+
+func TestApplyExtrasRejectsUnterminatedCodegraphGuidance(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses a POSIX executable stub")
+	}
+	assets := codegraphAssets(t)
+	target := t.TempDir()
+	binDir := t.TempDir()
+	writeExecutable(t, filepath.Join(binDir, "codegraph"), "#!/bin/sh\nexit 0\n")
+	t.Setenv("PATH", binDir)
+	write(t, filepath.Join(target, "AGENTS.md"), "# Rules\n\n<!-- codegraph-guidance -->\nunterminated\n")
+
+	_, err := install.ApplyExtras(map[string]bool{"codegraph": true}, assets, target)
+	if err == nil || !strings.Contains(err.Error(), "unterminated") {
+		t.Fatalf("expected an unterminated guidance error, got %v", err)
 	}
 }

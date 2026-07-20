@@ -67,6 +67,7 @@ selecciona, el instalador:
 2. registra `codegraph serve --mcp` como MCP local en `opencode.json`;
 3. añade a `AGENTS.md` las reglas de uso e inicialización por proyecto.
 
-Si CodeGraph se desmarca, no se instala el CLI ni se añaden su MCP o sus reglas.
-Context7 permanece configurado por separado como MCP remoto y no necesita un
-binario local.
+Si CodeGraph se desmarca, no se instala el CLI y se retiran de la configuración
+su MCP y sus reglas gestionadas. Un binario instalado previamente se conserva,
+ya que puede estar en uso fuera de OpenCode. Context7 permanece configurado por
+separado como MCP remoto y no necesita un binario local.

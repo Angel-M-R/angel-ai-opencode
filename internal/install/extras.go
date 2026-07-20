@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 )
 
+const codegraphOptionKey = "codegraph"
+
 // ExtraOption is a standalone integration or UI toggle applied at the end of
 // the wizard, outside the assets/ catalog.
 type ExtraOption struct {
@@ -18,7 +20,7 @@ type ExtraOption struct {
 // file scanning cannot express.
 var ExtraOptions = []ExtraOption{
 	{
-		Key:         "codegraph",
+		Key:         codegraphOptionKey,
 		Label:       "CodeGraph",
 		Description: "Instala el CLI, registra el MCP local y añade sus reglas a AGENTS.md",
 	},
@@ -42,12 +44,19 @@ var ExtraOptions = []ExtraOption{
 // PlanExtras describes what ApplyExtras would do, one line per action.
 func PlanExtras(selected map[string]bool, configDir string) []string {
 	var lines []string
-	if selected["codegraph"] {
-		lines = append(lines,
-			"asegurar  "+codegraphPackage,
-			"merge     codegraph MCP → opencode.json",
-			"actualizar CodeGraph → AGENTS.md",
-		)
+	if codegraphSelected, configured := selected[codegraphOptionKey]; configured {
+		if codegraphSelected {
+			lines = append(lines,
+				"asegurar  "+codegraphPackage,
+				"merge     codegraph MCP → opencode.json",
+				"actualizar CodeGraph → AGENTS.md",
+			)
+		} else {
+			lines = append(lines,
+				"retirar   codegraph MCP → opencode.json",
+				"retirar   CodeGraph → AGENTS.md",
+			)
+		}
 	}
 	if selected["angel-logo"] {
 		for _, name := range angelLogoFiles {
@@ -70,8 +79,14 @@ var angelLogoFiles = []string{"angel-logo.tsx", "mcp-footer-state.ts"}
 func ApplyExtras(selected map[string]bool, assetsDir, configDir string) ([]string, error) {
 	var done []string
 
-	if selected["codegraph"] {
-		lines, err := applyCodegraph(assetsDir, configDir)
+	if codegraphSelected, configured := selected[codegraphOptionKey]; configured {
+		var lines []string
+		var err error
+		if codegraphSelected {
+			lines, err = applyCodegraph(assetsDir, configDir)
+		} else {
+			lines, err = removeCodegraph(configDir)
+		}
 		done = append(done, lines...)
 		if err != nil {
 			return done, err

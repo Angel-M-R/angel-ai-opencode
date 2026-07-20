@@ -100,22 +100,25 @@ func mergeJSON(targetPath, defaultSchema string, patches []map[string]any) ([]st
 		return nil, err
 	}
 
-	var done []string
-	if raw != nil {
-		backup := targetPath + ".bak-" + time.Now().Format("20060102-150405")
-		if err := os.WriteFile(backup, raw, 0o644); err != nil {
-			return nil, fmt.Errorf("writing backup: %w", err)
-		}
-		done = append(done, "backup    "+backup)
-	}
-
 	for _, patch := range patches {
 		merge(config, patch)
 	}
+	return writeJSON(targetPath, config, raw)
+}
 
+func writeJSON(targetPath string, config map[string]any, previous []byte) ([]string, error) {
 	out, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		return done, err
+		return nil, err
+	}
+
+	var done []string
+	if previous != nil {
+		backup := targetPath + ".bak-" + time.Now().Format("20060102-150405")
+		if err := os.WriteFile(backup, previous, 0o644); err != nil {
+			return nil, fmt.Errorf("writing backup: %w", err)
+		}
+		done = append(done, "backup    "+backup)
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		return done, err
