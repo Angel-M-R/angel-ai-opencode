@@ -26,8 +26,16 @@ go run . --all --dry-run  # muestra el plan sin tocar nada
 go run . --target /ruta   # instalar en otro directorio (para probar)
 ```
 
-Antes de tocar `opencode.json` o `tui.json` siempre se guarda una copia
-`.bak-<fecha>`, y el merge nunca borra claves existentes.
+La instalación reconcilia archivos individuales: si un agente, skill, tema o
+plugin ya existe en la misma ruta, reemplaza solo ese archivo y conserva el
+resto de la carpeta. Los archivos idénticos no se reescriben ni generan backup;
+cuando cambia un archivo existente se crea una copia `.bak-<fecha>-<id>`.
+
+`AGENTS.md` global es la excepción: al seleccionarlo se reemplaza completo. El
+plan previo avisa de ello y muestra su ruta exacta. `opencode.json` y `tui.json`
+se combinan de forma idempotente: los objetos se mezclan, los plugins se
+reconcilian por identidad y versión, y las demás listas se reemplazan para no
+duplicar ni alterar comandos posicionales.
 
 ## Qué edita
 
@@ -38,7 +46,7 @@ que tocarlo para cambiar contenido:
 |---|---|---|
 | `assets/agents/*.md` | Un agente por archivo: frontmatter YAML + system prompt como cuerpo | `~/.config/opencode/agents/` |
 | `assets/commands/*.md` | Comandos slash | `~/.config/opencode/commands/` |
-| `assets/skills/<nombre>/` | Skills (carpeta completa) | `~/.config/opencode/skills/` |
+| `assets/skills/<nombre>/` | Archivos de cada skill; conserva archivos extra del destino | `~/.config/opencode/skills/` |
 | `assets/plugins/*` | Plugins JS/TS | `~/.config/opencode/plugins/` |
 | `assets/themes/*.json` | Temas | `~/.config/opencode/themes/` |
 | `assets/agents-md/AGENTS.md` | Reglas globales de comportamiento | `~/.config/opencode/AGENTS.md` |
@@ -67,7 +75,9 @@ selecciona, el instalador:
 2. registra `codegraph serve --mcp` como MCP local en `opencode.json`;
 3. añade a `AGENTS.md` las reglas de uso e inicialización por proyecto.
 
-Si CodeGraph se desmarca, no se instala el CLI y se retiran de la configuración
-su MCP y sus reglas gestionadas. Un binario instalado previamente se conserva,
-ya que puede estar en uso fuera de OpenCode. Context7 permanece configurado por
-separado como MCP remoto y no necesita un binario local.
+Si CodeGraph se desmarca, no se instala el CLI y se elimina por completo
+`mcp.codegraph`, además de retirar su bloque gestionado de `AGENTS.md`. Esa clave
+pertenece a este toggle aunque su contenido se hubiera personalizado. Un binario
+instalado previamente se conserva, ya que puede estar en uso fuera de OpenCode.
+Context7 permanece configurado por separado como MCP remoto y no necesita un
+binario local.

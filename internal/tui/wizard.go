@@ -223,12 +223,9 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 		items := m.chosen()
 		extras := m.chosenExtras()
 		return m, func() tea.Msg {
-			report, err := install.Apply(items, m.configDir)
-			extraReport, extraErr := install.ApplyExtras(extras, m.assetsDir, m.configDir)
-			report = append(report, extraReport...)
-			if err == nil {
-				err = extraErr
-			}
+			report, err := install.ApplyInstallation(install.InstallationRequest{
+				Items: items, Extras: extras, AssetsDir: m.assetsDir, ConfigDir: m.configDir,
+			})
 			return installedMsg{report: report, err: err}
 		}
 	}
@@ -293,8 +290,12 @@ func (m Model) View() string {
 			}
 			b.WriteString(fmt.Sprintf("  Integraciones y extras: %s\n", selectedCount.Render(fmt.Sprintf("%d/%d", count, len(m.extras)))))
 		}
-		plan := install.Plan(m.chosen(), m.configDir)
-		plan = append(plan, install.PlanExtras(m.chosenExtras(), m.configDir)...)
+		plan, planErr := install.PlanInstallation(install.InstallationRequest{
+			Items: m.chosen(), Extras: m.chosenExtras(), AssetsDir: m.assetsDir, ConfigDir: m.configDir,
+		})
+		if planErr != nil {
+			plan = []string{"ERROR      " + planErr.Error()}
+		}
 		b.WriteString("\n" + stepStyle.Render(fmt.Sprintf("%d acciones sobre %s", len(plan), m.configDir)) + "\n")
 		for _, line := range truncate(plan, 12) {
 			b.WriteString("  " + line + "\n")

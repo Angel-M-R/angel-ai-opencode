@@ -1,3 +1,4 @@
 /angel
+/.codegraph/
 *.bak-*
 .DS_Store

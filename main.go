@@ -58,23 +58,21 @@ func run(assetsDir, configDir string, all, dryRun bool) error {
 	}
 
 	if dryRun {
-		for _, line := range install.Plan(items, configDir) {
-			fmt.Println(line)
+		plan, err := install.PlanInstallation(install.InstallationRequest{
+			Items: items, Extras: extras, AssetsDir: assetsDir, ConfigDir: configDir,
+		})
+		if err != nil {
+			return err
 		}
-		for _, line := range install.PlanExtras(extras, configDir) {
+		for _, line := range plan {
 			fmt.Println(line)
 		}
 		return nil
 	}
-	report, err := install.Apply(items, configDir)
+	report, err := install.ApplyInstallation(install.InstallationRequest{
+		Items: items, Extras: extras, AssetsDir: assetsDir, ConfigDir: configDir,
+	})
 	for _, line := range report {
-		fmt.Println(line)
-	}
-	if err != nil {
-		return err
-	}
-	extraReport, err := install.ApplyExtras(extras, assetsDir, configDir)
-	for _, line := range extraReport {
 		fmt.Println(line)
 	}
 	return err

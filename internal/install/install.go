@@ -1,147 +1,111 @@
-// Package install writes selected catalog items into the opencode config
-// directory. File and directory items are copied verbatim; JSON fragments are
-// deep-merged into opencode.json after saving a timestamped .bak copy.
+// Package install reconciles selected assets and integrations into an OpenCode
+// configuration directory.
 package install
 
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
-
-	"angel-ai-opencode/internal/catalog"
 )
 
-// Plan describes what Apply would do, one line per action.
-func Plan(items []catalog.Item, configDir string) []string {
-	var lines []string
-	for _, item := range items {
-		switch item.Kind {
-		case catalog.MergeJSON:
-			lines = append(lines, fmt.Sprintf("merge  %s → opencode.json", filepath.Base(item.Source)))
-		case catalog.CopyDir:
-			lines = append(lines, fmt.Sprintf("copiar %s/ → %s/", item.Name, filepath.Join(configDir, item.Dest)))
-		default:
-			lines = append(lines, fmt.Sprintf("copiar %s → %s", filepath.Base(item.Source), filepath.Join(configDir, item.Dest)))
+type fileWriteResult struct {
+	changed    bool
+	created    bool
+	backupPath string
+}
+
+func reconcileFile(file preparedFile) (fileWriteResult, error) {
+	previous, err := os.ReadFile(file.path)
+	created := false
+	switch {
+	case err == nil:
+		if file.contentMatches(previous) {
+			return fileWriteResult{}, nil
 		}
+	case os.IsNotExist(err):
+		created = true
+		previous = nil
+	default:
+		return fileWriteResult{}, err
+	}
+
+	result := fileWriteResult{changed: true, created: created}
+	if !created {
+		backupPath, err := writeBackup(file.path, previous)
+		if err != nil {
+			return fileWriteResult{}, fmt.Errorf("writing backup: %w", err)
+		}
+		result.backupPath = backupPath
+	}
+
+	dir := filepath.Dir(file.path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fileWriteResult{}, err
+	}
+	temp, err := os.CreateTemp(dir, ".angel-ai-*.tmp")
+	if err != nil {
+		return fileWriteResult{}, err
+	}
+	tempPath := temp.Name()
+	cleanup := func() {
+		_ = temp.Close()
+		_ = os.Remove(tempPath)
+	}
+	if err := temp.Chmod(file.perm); err != nil {
+		cleanup()
+		return fileWriteResult{}, err
+	}
+	if _, err := temp.Write(file.content); err != nil {
+		cleanup()
+		return fileWriteResult{}, err
+	}
+	if err := temp.Sync(); err != nil {
+		cleanup()
+		return fileWriteResult{}, err
+	}
+	if err := temp.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return fileWriteResult{}, err
+	}
+	if err := os.Rename(tempPath, file.path); err != nil {
+		_ = os.Remove(tempPath)
+		return fileWriteResult{}, err
+	}
+	return result, nil
+}
+
+func fileResultLines(path string, result fileWriteResult) []string {
+	var lines []string
+	if result.backupPath != "" {
+		lines = append(lines, "backup    "+result.backupPath)
+	}
+	switch {
+	case result.created:
+		lines = append(lines, "creado    "+path)
+	case result.changed:
+		lines = append(lines, "actualizado "+path)
+	default:
+		lines = append(lines, "sin cambios "+path)
 	}
 	return lines
 }
 
-// Apply installs the items and returns one line per completed action.
-func Apply(items []catalog.Item, configDir string) ([]string, error) {
-	var done []string
-	var fragments []catalog.Item
-	for _, item := range items {
-		if item.Kind == catalog.MergeJSON {
-			fragments = append(fragments, item)
-			continue
-		}
-		dest := filepath.Join(configDir, item.Dest)
-		var err error
-		if item.Kind == catalog.CopyDir {
-			err = copyDir(item.Source, dest)
-		} else {
-			err = copyFile(item.Source, dest)
-		}
-		if err != nil {
-			return done, fmt.Errorf("installing %s: %w", item.Name, err)
-		}
-		done = append(done, "instalado "+dest)
-	}
-
-	if len(fragments) > 0 {
-		lines, err := mergeFragments(fragments, configDir)
-		done = append(done, lines...)
-		if err != nil {
-			return done, err
-		}
-	}
-	return done, nil
-}
-
-func mergeFragments(fragments []catalog.Item, configDir string) ([]string, error) {
-	var patches []map[string]any
-	var done []string
-	for _, fragment := range fragments {
-		raw, err := os.ReadFile(fragment.Source)
-		if err != nil {
-			return done, err
-		}
-		var patch map[string]any
-		if err := json.Unmarshal(raw, &patch); err != nil {
-			return done, fmt.Errorf("parsing fragment %s: %w", fragment.Name, err)
-		}
-		patches = append(patches, patch)
-		done = append(done, "merge     "+filepath.Base(fragment.Source))
-	}
-
-	configPath := filepath.Join(configDir, "opencode.json")
-	lines, err := mergeJSON(configPath, "https://opencode.ai/config.json", patches)
-	done = append(done, lines...)
-	return done, err
-}
-
-// mergeJSON deep-merges patches (applied in order) into the JSON object at
-// targetPath, creating it with defaultSchema as its base if it doesn't exist
-// yet. An existing file is backed up first with a timestamped .bak copy.
-func mergeJSON(targetPath, defaultSchema string, patches []map[string]any) ([]string, error) {
-	config := map[string]any{"$schema": defaultSchema}
-
-	raw, err := os.ReadFile(targetPath)
-	switch {
-	case err == nil:
-		if err := json.Unmarshal(raw, &config); err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", targetPath, err)
-		}
-	case !os.IsNotExist(err):
-		return nil, err
-	}
-
-	for _, patch := range patches {
-		merge(config, patch)
-	}
-	return writeJSON(targetPath, config, raw)
-}
-
-func writeJSON(targetPath string, config map[string]any, previous []byte) ([]string, error) {
-	out, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	var done []string
-	if previous != nil {
-		backup, err := writeBackup(targetPath, previous)
-		if err != nil {
-			return nil, fmt.Errorf("writing backup: %w", err)
-		}
-		done = append(done, "backup    "+backup)
-	}
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-		return done, err
-	}
-	if err := os.WriteFile(targetPath, append(out, '\n'), 0o644); err != nil {
-		return done, err
-	}
-	done = append(done, "escrito   "+targetPath)
-	return done, nil
-}
-
 func writeBackup(targetPath string, content []byte) (string, error) {
-	pattern := filepath.Base(targetPath) + ".bak-" + time.Now().Format("20060102-150405") + "-*"
+	pattern := "." + filepath.Base(targetPath) + ".bak-" + time.Now().Format("20060102-150405") + "-*"
 	backup, err := os.CreateTemp(filepath.Dir(targetPath), pattern)
 	if err != nil {
 		return "", err
 	}
-	backupPath := backup.Name()
+	tempPath := backup.Name()
+	backupPath := filepath.Join(filepath.Dir(targetPath), strings.TrimPrefix(filepath.Base(tempPath), "."))
 	cleanup := func() {
 		_ = backup.Close()
-		_ = os.Remove(backupPath)
+		_ = os.Remove(tempPath)
 	}
-	if err := backup.Chmod(0o644); err != nil {
+	if err := backup.Chmod(0o600); err != nil {
 		cleanup()
 		return "", err
 	}
@@ -149,15 +113,27 @@ func writeBackup(targetPath string, content []byte) (string, error) {
 		cleanup()
 		return "", err
 	}
+	if err := backup.Sync(); err != nil {
+		cleanup()
+		return "", err
+	}
 	if err := backup.Close(); err != nil {
-		_ = os.Remove(backupPath)
+		_ = os.Remove(tempPath)
+		return "", err
+	}
+	if err := os.Link(tempPath, backupPath); err != nil {
+		_ = os.Remove(tempPath)
+		return "", err
+	}
+	if err := os.Remove(tempPath); err != nil {
 		return "", err
 	}
 	return backupPath, nil
 }
 
-// merge deep-merges src into dst: maps merge recursively, arrays union
-// (existing entries kept, new ones appended), scalars overwrite.
+// merge deep-merges src into dst. Objects merge recursively, plugin arrays are
+// reconciled by plugin identity, and every other array is replaced because its
+// order and positional meaning may be significant (for example MCP commands).
 func merge(dst, src map[string]any) {
 	for key, value := range src {
 		if existing, ok := dst[key]; ok {
@@ -169,7 +145,11 @@ func merge(dst, src map[string]any) {
 			}
 			if dstArr, ok1 := existing.([]any); ok1 {
 				if srcArr, ok2 := value.([]any); ok2 {
-					dst[key] = unionArray(dstArr, srcArr)
+					if key == "plugin" {
+						dst[key] = mergePluginArray(dstArr, srcArr)
+					} else {
+						dst[key] = srcArr
+					}
 					continue
 				}
 			}
@@ -178,52 +158,56 @@ func merge(dst, src map[string]any) {
 	}
 }
 
-func unionArray(dst, src []any) []any {
-	seen := make(map[string]bool, len(dst))
-	for _, v := range dst {
-		seen[fmt.Sprintf("%v", v)] = true
+func mergePluginArray(existing, desired []any) []any {
+	desiredLatest := make(map[string]any, len(desired))
+	desiredLastIndex := make(map[string]int, len(desired))
+	for index, value := range desired {
+		identity := pluginIdentity(value)
+		desiredLatest[identity] = value
+		desiredLastIndex[identity] = index
 	}
-	for _, v := range src {
-		if !seen[fmt.Sprintf("%v", v)] {
-			dst = append(dst, v)
+
+	result := make([]any, 0, len(existing)+len(desired))
+	seen := make(map[string]bool, len(existing)+len(desired))
+	for _, value := range existing {
+		identity := pluginIdentity(value)
+		if seen[identity] {
+			continue
+		}
+		seen[identity] = true
+		if replacement, ok := desiredLatest[identity]; ok {
+			result = append(result, replacement)
+		} else {
+			result = append(result, value)
 		}
 	}
-	return dst
+	for index, value := range desired {
+		identity := pluginIdentity(value)
+		if !seen[identity] && desiredLastIndex[identity] == index {
+			seen[identity] = true
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
-func copyFile(src, dest string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
+func pluginIdentity(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		encoded, _ := json.Marshal(value)
+		return "json:" + string(encoded)
 	}
-	in, err := os.Open(src)
-	if err != nil {
-		return err
+	if strings.HasPrefix(text, "file:") || strings.Contains(text, "://") || filepath.IsAbs(text) {
+		return text
 	}
-	defer in.Close()
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Close()
-}
-
-func copyDir(src, dest string) error {
-	return filepath.WalkDir(src, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	if strings.HasPrefix(text, "@") {
+		if version := strings.Index(text[1:], "@"); version >= 0 {
+			return text[:version+1]
 		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dest, rel)
-		if entry.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		return copyFile(path, target)
-	})
+		return text
+	}
+	if version := strings.IndexByte(text, '@'); version >= 0 {
+		return text[:version]
+	}
+	return text
 }
