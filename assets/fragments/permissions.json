@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "*": "allow",
+      "git commit *": "ask",
+      "git push": "ask",
+      "git push *": "ask",
+      "git push --force *": "ask",
+      "git rebase *": "ask",
+      "git reset --hard *": "ask"
+    },
+    "read": {
+      "*": "allow",
+      "**/*.key": "deny",
+      "**/*.pem": "deny",
+      "**/.aws/credentials": "deny",
+      "**/.config/gh/hosts.yml": "deny",
+      "**/.credentials/**": "deny",
+      "**/.env": "deny",
+      "**/.env.*": "deny",
+      "**/.ssh/**": "deny",
+      "**/Library/Keychains/**": "deny",
+      "**/credentials.json": "deny",
+      "**/secrets/**": "deny",
+      "*.env": "deny",
+      "*.env.*": "deny"
+    }
+  }
+}
