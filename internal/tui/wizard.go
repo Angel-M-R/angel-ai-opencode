@@ -57,7 +57,8 @@ type Model struct {
 	err    error
 }
 
-// New builds the wizard with every item preselected.
+// New builds the wizard with every catalog item preselected and extras set to
+// their descriptor defaults.
 func New(categories []catalog.Category, assetsDir, configDir string) Model {
 	selected := make([][]bool, len(categories))
 	for i, category := range categories {
@@ -68,8 +69,8 @@ func New(categories []catalog.Category, assetsDir, configDir string) Model {
 	}
 	extras := install.ExtraOptions
 	extraSelected := make([]bool, len(extras))
-	for i := range extraSelected {
-		extraSelected[i] = true
+	for i, extra := range extras {
+		extraSelected[i] = extra.DefaultSelected
 	}
 	return Model{
 		categories:    categories,
