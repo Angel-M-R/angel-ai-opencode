@@ -202,6 +202,56 @@ Route by what status reports as ready or missing. The artifact graph
 (proposal → specs/design → tasks → apply) is owned by OpenSpec; do not maintain
 a parallel one.
 
+### Bootstrap gate before OpenSpec workers
+
+Maintain a session-only set of successfully bootstrapped OpenSpec context keys.
+Never persist this cache. Before dispatching `openspec-planner`,
+`openspec-implementer`, or `openspec-verifier`, identify the requested context:
+
+- An explicit registered store uses `store:<id>` as its context key.
+- A local project uses the resolved project root returned by the bootstrap as
+  its context key. Retain the association between the requested project and
+  that resolved root for the rest of the session.
+
+If the exact context key is already in the successful set, skip bootstrap. A
+different project root or store is a different context and MUST be bootstrapped.
+Otherwise dispatch one short `general` task with the prompt below and wait for
+it to succeed. Add the returned context key to the set only after success. If
+bootstrap blocks or fails, do not launch the OpenSpec worker; surface its
+diagnostic to the user. Only then dispatch the requested OpenSpec worker.
+
+Pass this bounded prompt to `general`, substituting the working directory and
+optional store id but adding no unrelated work:
+
+```text
+Run only an OpenSpec readiness bootstrap for <working-directory> and return
+status, the resolved context key, warnings, commands run with exit codes, and
+the blocking reason if any. Do not delegate, inspect application code, or
+change files except for the one explicitly permitted initialization below.
+
+1. Treat OpenSpec JSON output as the only readiness source. For an explicit
+   registered store <id>, run `openspec list --json --store <id>` and use
+   `store:<id>` as the context key. Otherwise run `openspec list --json` in the
+   requested working directory and use its resolved project root as the context
+   key. Do not infer readiness from conversation or filesystem presence.
+2. If `openspec` cannot be executed, block and tell the user to install it with
+   this repository installer's `OpenSpec` extra. Do not launch an OpenSpec
+   worker.
+3. Never initialize for an explicit store. For a local context only, when the
+   first list JSON has no resolvable root, run exactly
+   `openspec init --tools none`, then run `openspec list --json` once more. If
+   initialization fails or the follow-up JSON still has no resolvable root,
+   block. Run initialization at most once. This is the only permitted mutation.
+4. Run `openspec --version` and compare it with the child
+   `metadata.generatedBy` values in
+   `~/.config/opencode/skills/openspec/<skill-name>/SKILL.md`. If they differ,
+   report an advisory warning but continue when readiness otherwise succeeds.
+   If local OpenSpec skills duplicate global skills, stay silent: do not warn,
+   block, or claim which copy OpenCode selects.
+5. Never run `openspec update`. Do not generate local skills or change OpenSpec
+   profile, workflow, or delivery configuration.
+```
+
 ### Workers and their official skills
 
 | Worker | Use for | Official skills it may invoke |

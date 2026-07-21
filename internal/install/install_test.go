@@ -76,6 +76,34 @@ func TestApplyReplacesOnlyMatchingFilesAndSkipsIdenticalContent(t *testing.T) {
 	}
 }
 
+func TestApplyRecursivelyCopiesNestedOpenSpecSkills(t *testing.T) {
+	assets := t.TempDir()
+	want := map[string]string{
+		"openspec-apply-change":  "# apply\n",
+		"openspec-verify-change": "# verify\n",
+	}
+	for name, content := range want {
+		write(t, filepath.Join(assets, "skills", "openspec", name, "SKILL.md"), content)
+	}
+	categories, err := catalog.Load(assets)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := t.TempDir()
+	if _, err := install.ApplyInstallation(install.InstallationRequest{
+		Items: categories[0].Items, AssetsDir: assets, ConfigDir: target,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range want {
+		path := filepath.Join(target, "skills", "openspec", name, "SKILL.md")
+		if got := string(readFile(t, path)); got != content {
+			t.Errorf("installed %s = %q, want %q", path, got, content)
+		}
+	}
+}
+
 func TestApplyUsesKeySpecificArrayMergeRules(t *testing.T) {
 	assets := t.TempDir()
 	write(t, filepath.Join(assets, "fragments", "settings.json"), `{

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -35,10 +34,11 @@ type preparedFile struct {
 }
 
 type preparedInstallation struct {
-	files                []preparedFile
-	ensureCodegraph      bool
-	codegraphAlreadyPath string
+	files      []preparedFile
+	globalCLIs []globalCLIDescriptor
 }
+
+var prepareInstallationForApply = prepareInstallation
 
 // PlanInstallation inspects the destination and describes the exact changes
 // ApplyInstallation would make without mutating the machine.
@@ -47,16 +47,15 @@ func PlanInstallation(request InstallationRequest) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := make([]string, 0, len(prepared.files)+1)
+	if _, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands); err != nil {
+		return nil, err
+	}
+	lines := make([]string, 0, len(prepared.files)+len(prepared.globalCLIs))
 	for _, file := range prepared.files {
 		lines = append(lines, file.planLine())
 	}
-	if prepared.ensureCodegraph {
-		if prepared.codegraphAlreadyPath != "" {
-			lines = append(lines, "DISPONIBLE "+prepared.codegraphAlreadyPath)
-		} else {
-			lines = append(lines, "INSTALAR   "+codegraphPackage)
-		}
+	for _, descriptor := range prepared.globalCLIs {
+		lines = append(lines, "INSTALAR   "+descriptor.packageSpec)
 	}
 	return lines, nil
 }
@@ -64,18 +63,24 @@ func PlanInstallation(request InstallationRequest) ([]string, error) {
 // ApplyInstallation validates the complete desired state before performing any
 // package installation or file write, then applies only changed files.
 func ApplyInstallation(request InstallationRequest) ([]string, error) {
-	prepared, err := prepareInstallation(request)
+	prepared, err := prepareInstallationForApply(request)
+	if err != nil {
+		return nil, err
+	}
+	manager, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands)
 	if err != nil {
 		return nil, err
 	}
 	var done []string
-	if prepared.ensureCodegraph {
-		line, err := ensureCodegraphInstalled()
+	for _, descriptor := range prepared.globalCLIs {
+		line, err := installGlobalCLI(descriptor, manager, systemGlobalCLICommands)
 		if err != nil {
 			return done, err
 		}
 		done = append(done, line)
-		prepared, err = prepareInstallation(request)
+	}
+	if len(prepared.globalCLIs) > 0 {
+		prepared, err = prepareInstallationForApply(request)
 		if err != nil {
 			return done, err
 		}
@@ -102,7 +107,7 @@ func (file preparedFile) contentMatches(content []byte) bool {
 }
 
 func prepareInstallation(request InstallationRequest) (preparedInstallation, error) {
-	prepared := preparedInstallation{}
+	prepared := preparedInstallation{globalCLIs: selectedGlobalCLIs(request.Extras)}
 	var fragments []map[string]any
 	var globalAgents *catalog.Item
 
@@ -148,10 +153,6 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 		codegraphObject, ok = mcp["codegraph"].(map[string]any)
 		if !ok {
 			return preparedInstallation{}, fmt.Errorf("CodeGraph MCP config has no codegraph object")
-		}
-		prepared.ensureCodegraph = true
-		if path, err := exec.LookPath("codegraph"); err == nil {
-			prepared.codegraphAlreadyPath = path
 		}
 	}
 

@@ -1,6 +1,9 @@
 package install
 
-const codegraphOptionKey = "codegraph"
+const (
+	codegraphOptionKey = "codegraph"
+	openSpecOptionKey  = "openspec"
+)
 
 // ExtraOption is a standalone integration or UI toggle applied at the end of
 // the wizard, outside the assets/ catalog.
@@ -18,6 +21,11 @@ var ExtraOptions = []ExtraOption{
 		Key:         codegraphOptionKey,
 		Label:       "CodeGraph",
 		Description: "Instala el CLI, registra el MCP local y añade sus reglas a AGENTS.md",
+	},
+	{
+		Key:         openSpecOptionKey,
+		Label:       "OpenSpec",
+		Description: "Instala o actualiza el CLI global de OpenSpec",
 	},
 	{
 		Key:         "angel-logo",

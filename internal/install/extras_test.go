@@ -94,6 +94,7 @@ func TestInstallationConfiguresSelectedCodegraphIdempotently(t *testing.T) {
 	target := t.TempDir()
 	binDir := t.TempDir()
 	writeExecutable(t, filepath.Join(binDir, "codegraph"), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, "npm"), "#!/bin/sh\nexit 0\n")
 	t.Setenv("PATH", binDir)
 
 	opencodePath := filepath.Join(target, "opencode.json")
@@ -250,6 +251,7 @@ func TestInstallationComposesGlobalAgentsAndCodegraphIdempotently(t *testing.T) 
 	write(t, opencodePath, `{"mcp":{"context7":{"type":"remote"},"codegraph":{"command":["custom"],"enabled":false}}}`)
 	binDir := t.TempDir()
 	writeExecutable(t, filepath.Join(binDir, "codegraph"), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, "npm"), "#!/bin/sh\nexit 0\n")
 	t.Setenv("PATH", binDir)
 
 	request := install.InstallationRequest{
