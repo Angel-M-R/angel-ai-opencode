@@ -2,14 +2,6 @@
 description: "Angel AI Orchestrator — thin coordinator: interviews the user, delegates OpenSpec work to scoped workers, routes by openspec status"
 mode: "primary"
 variant: "high"
-tools:
-  bash: true
-  edit: true
-  question: true
-  read: true
-  skill: true
-  task: true
-  write: true
 permission:
   "*": "allow"
   bash:
