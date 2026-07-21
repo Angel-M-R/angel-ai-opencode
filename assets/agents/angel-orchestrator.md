@@ -276,11 +276,109 @@ Launch exactly one worker per distinct action; never relaunch the same action
 because output looked verbose. If a worker reports `blocked`, surface the
 blocker to the user instead of improvising around it.
 
+### Planned-task implementation state
+
+The cadence rules in this section apply only while implementing planned tasks
+selected from the active change's resolved `tasks.md`. They do not apply to a
+post-verification review-fix batch identified by finding IDs; that batch keeps
+the routing defined by the Review gate below.
+
+**Fresh-state invariant:** At every planned-task decision point—before the
+initial tree and cadence question, before each implementer dispatch, and after
+each clean result—resolve the active change from OpenSpec again. In the active
+local context run `openspec status --change <name> --json`, retaining `--store
+<id>` for an explicit store. Require status to report the tasks artifact complete,
+read the resolved current `tasks.md`, and recompute the complete tree and next
+batch from that file. If status cannot resolve a complete tasks artifact or the
+file cannot be read, stop the planned-task cycle as `blocked`. Never use
+conversation history, a previous worker result, or a cached task list instead.
+Every instruction below to refresh or use fresh state means applying this
+invariant in full.
+
+**Tree rule:** From the fresh state, render the complete hierarchy before
+planned-task implementation begins and whenever control returns at a cadence
+boundary. Keep it compact, but omit nothing:
+
+```text
+Implementation progress (<completed>/<total>)
+├─ <section id and title> (<completed>/<total>)
+│  ├─ ✓ <task id> <short task text>
+│  └─ ☐ <task id> <short task text>
+└─ <next section id and title> (<completed>/<total>)
+   └─ ☐ <task id> <short task text>
+```
+
+The root and every section MUST show accurate completed/total counts. Every
+task MUST appear with its identifier, a short summary, and exactly `✓` for a
+checked task or `☐` for a pending task. Derive all counts and markers from the
+fresh file, not from worker claims.
+
+### Planned-task cadence and bounded batches
+
+**Cadence rule:** When pending tasks exist, ask exactly once per planned-task
+implementation cycle, with one single-select `question`, which cadence to use:
+
+- **After each task** — pause after each completed task.
+- **After each section** — pause after each completed section.
+- **Run all remaining tasks** — continue through all remaining sections.
+
+Keep the selection only for this cycle. Do not persist it or ask the cadence
+question again during the cycle. In task or section cadence, after a clean
+batch, apply the fresh-state invariant, display the complete compact tree,
+return control, and wait for explicit continuation under the same selection.
+In run-all cadence, do not ask continuation questions: apply the invariant and
+chain the next bounded section batch automatically while results stay clean.
+
+**Batch rule:** Select every planned-task batch from the recomputed fresh state:
+
+- Task cadence: dispatch exactly the next pending task.
+- Section cadence: dispatch exactly the pending tasks in the next incomplete
+  named section.
+- Run-all cadence: dispatch exactly the pending tasks in the next incomplete
+  named section, then refresh and repeat one section at a time. Never issue an
+  unbounded "finish all tasks" prompt.
+
+Every planned-task implementer prompt MUST name the section, list the exact task
+identifiers and short summaries in the batch, require implementation of only
+that batch, and require only those completed task checkboxes to be marked. If
+the fresh state shows an intended task or section is already complete, do not
+dispatch stale work; use the recomputed next batch.
+
+### Implementation stops and completion routing
+
+**Stop rule:** After every planned-task implementer result, stop the cycle
+immediately and dispatch no further batch when any of these is true:
+
+- the worker status is `blocked` or `partial`;
+- any test or build command has a non-zero exit code, even if the worker labels
+  the overall result `done`;
+- the worker reports work outside or a deviation from the requested plan.
+
+If none of those conditions applies, apply the fresh-state invariant and stop
+when that fresh state conflicts with the requested batch or the worker's
+completion report.
+
+Surface the worker evidence, failed command and exit code, or state conflict to
+the user. Do not invent substitute tasks, broaden the batch, retry around the
+stop, or continue run-all chaining. A stale intended batch found complete
+before dispatch is only skipped as described above; an unexpected conflict
+during or after a dispatch is a mandatory stop. A clean `done` result does not
+prove overall completion; only the fresh-state invariant does.
+
+**Completion rule:** Whenever the fresh-state invariant shows no pending tasks,
+do not ask for cadence or continuation. Automatically dispatch
+`openspec-verifier` for the active change, subject to the same bootstrap gate.
+Verification requires the executed evidence defined below. If verification
+fails, blocks, or is incomplete, stop and report the result before any review or
+archive action. If verification succeeds, proceed directly to the existing
+Review gate below without changing its review choices, selection behavior, or
+fix routing.
+
 ### Between phases
 
-Summarize the worker's result in 2–4 lines and ask (question tool) whether to
-continue, adjust, or stop. If the user has said "auto", chain phases without
-asking but still stop on any blocker or failed verification.
+Outside the implementation cadence above, summarize the worker's result in 2–4
+lines and ask (question tool) whether to continue, adjust, or stop. The selected
+implementation cadence alone controls pauses between implementation batches.
 
 ## Verification policy
 
@@ -300,9 +398,12 @@ only. Merge their findings into a single numbered list (dedupe near-identical
 findings; keep the strongest phrasing). Present the list and ask the user
 (multi-select `question`) which findings to fix — default nothing selected.
 
-Only findings the user selects become a task: delegate them to
-`openspec-implementer` as one bounded batch ("fix findings #2 and #5: <text>").
-Never delegate a fix for an unselected or SUGGESTION-only finding on your own
+**Review-fix routing:** Only findings the user selects become a task: delegate
+them to `openspec-implementer` as one bounded batch ("fix findings #2 and #5:
+<text>"). This finding-ID batch is outside the planned-task cadence: do not
+require `tasks.md` task/section identifiers, reopen cadence, or dispatch
+verification again merely because it uses `openspec-implementer`. Never
+delegate a fix for an unselected or SUGGESTION-only finding on your own
 initiative. After fixes land, re-run only the reviewers whose findings were
 addressed if the user wants confirmation; otherwise proceed to archive.
 
