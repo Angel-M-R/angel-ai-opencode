@@ -1,6 +1,7 @@
 package install
 
 import (
+	"angel-ai-opencode/internal/catalog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -146,6 +147,146 @@ func TestVendoredOpenSpecAgentAssetsRemainPreserved(t *testing.T) {
 		}
 		if !strings.Contains(string(content), "generatedBy: \"1.6.0\"") {
 			t.Errorf("%s lost its vendored generatedBy contract", name)
+		}
+	}
+}
+
+func TestReviewerAssetsShareReadOnlyValidationContract(t *testing.T) {
+	names := []string{
+		"review-correctness",
+		"review-security-risk",
+		"review-simplicity",
+	}
+	const permissionContract = `permission:
+  bash:
+    "*": "allow"
+    "git add*": "deny"
+    "git commit*": "deny"
+    "git push*": "deny"
+  edit: "deny"
+  write: "deny"
+  read:
+    "*": "allow"
+    "*.env": "deny"
+    "*.env.*": "deny"
+    "*.key": "deny"
+    "*.pem": "deny"
+    ".aws/credentials": "deny"
+    ".config/gh/hosts.yml": "deny"
+    ".credentials/**": "deny"
+    ".ssh/**": "deny"
+    "Library/Keychains/**": "deny"
+    "credentials.json": "deny"
+    "secrets/**": "deny"
+    "**/*.key": "deny"
+    "**/*.pem": "deny"
+    "**/.aws/credentials": "deny"
+    "**/.config/gh/hosts.yml": "deny"
+    "**/.credentials/**": "deny"
+    "**/.env": "deny"
+    "**/.env.*": "deny"
+    "**/.ssh/**": "deny"
+    "**/Library/Keychains/**": "deny"
+    "**/credentials.json": "deny"
+    "**/secrets/**": "deny"
+    ".env.example": "allow"
+    "**/.env.example": "allow"
+    ".env.template": "allow"
+    "**/.env.template": "allow"`
+	const behaviorContract = `You may use Bash to inspect Git state, read or search non-secret repository
+files, and run tests or linters. Those validation commands may use the network,
+local services, or local artifacts. Remain read-only: never alter tracked files,
+stage, commit, push, or read secrets. Do not use Bash indirection or wrappers to
+bypass these limits; native permissions are not a complete sandbox.`
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			asset := readRepositoryAsset(t, "agents", name+".md")
+			frontmatter, body, found := strings.Cut(strings.TrimPrefix(asset, "---\n"), "---\n")
+			if !found {
+				t.Fatal("agent frontmatter is missing")
+			}
+			for _, tool := range []string{
+				"bash: true",
+				"edit: false",
+				"read: true",
+				"write: false",
+				"task: false",
+			} {
+				if !strings.Contains(frontmatter, tool) {
+					t.Errorf("missing tool contract %q", tool)
+				}
+			}
+			permissionStart := strings.Index(frontmatter, "permission:\n")
+			if permissionStart < 0 {
+				t.Fatal("permission contract is missing")
+			}
+			if got := strings.TrimSpace(frontmatter[permissionStart:]); got != permissionContract {
+				t.Errorf("permission contract differs:\n%s", got)
+			}
+			if !strings.Contains(body, behaviorContract) {
+				t.Error("allowed and denied reviewer behavior contract is missing")
+			}
+			requireTextInOrder(t, body,
+				"Include a **Validation evidence** section",
+				"every validation command you actually ran",
+				"its exit code",
+				"with findings or `No findings.`",
+				"Report non-zero exits without modifying files or attempting a fix.",
+			)
+		})
+	}
+}
+
+func TestSelectedReviewerAssetsAreCatalogedAndInstalledUnchanged(t *testing.T) {
+	assets := filepath.Join("..", "..", "assets")
+	categories, err := catalog.Load(assets)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]string{
+		"review-correctness":   "review-correctness.md",
+		"review-security-risk": "review-security-risk.md",
+		"review-simplicity":    "review-simplicity.md",
+	}
+	var selected []catalog.Item
+	for _, category := range categories {
+		if category.Name != "agents" {
+			continue
+		}
+		for _, item := range category.Items {
+			fileName, ok := want[item.Name]
+			if !ok {
+				continue
+			}
+			if item.Kind != catalog.CopyFile || item.Source != filepath.Join(assets, "agents", fileName) || item.Dest != filepath.Join("agents", fileName) {
+				t.Fatalf("catalog item %q = %#v", item.Name, item)
+			}
+			selected = append(selected, item)
+		}
+	}
+	if len(selected) != len(want) {
+		t.Fatalf("selected reviewer assets = %v, want %d", selected, len(want))
+	}
+
+	configDir := t.TempDir()
+	if _, err := ApplyInstallation(InstallationRequest{
+		Items: selected, AssetsDir: assets, ConfigDir: configDir,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range selected {
+		want, err := os.ReadFile(item.Source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(configDir, item.Dest))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("installed %s differs from selected asset", item.Name)
 		}
 	}
 }

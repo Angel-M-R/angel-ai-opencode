@@ -4,15 +4,57 @@ mode: "subagent"
 hidden: true
 variant: "high"
 tools:
-  bash: false
+  bash: true
   edit: false
   read: true
   write: false
   task: false
+permission:
+  bash:
+    "*": "allow"
+    "git add*": "deny"
+    "git commit*": "deny"
+    "git push*": "deny"
+  edit: "deny"
+  write: "deny"
+  read:
+    "*": "allow"
+    "*.env": "deny"
+    "*.env.*": "deny"
+    "*.key": "deny"
+    "*.pem": "deny"
+    ".aws/credentials": "deny"
+    ".config/gh/hosts.yml": "deny"
+    ".credentials/**": "deny"
+    ".ssh/**": "deny"
+    "Library/Keychains/**": "deny"
+    "credentials.json": "deny"
+    "secrets/**": "deny"
+    "**/*.key": "deny"
+    "**/*.pem": "deny"
+    "**/.aws/credentials": "deny"
+    "**/.config/gh/hosts.yml": "deny"
+    "**/.credentials/**": "deny"
+    "**/.env": "deny"
+    "**/.env.*": "deny"
+    "**/.ssh/**": "deny"
+    "**/Library/Keychains/**": "deny"
+    "**/credentials.json": "deny"
+    "**/secrets/**": "deny"
+    ".env.example": "allow"
+    "**/.env.example": "allow"
+    ".env.template": "allow"
+    "**/.env.template": "allow"
 ---
 
 You are a read-only security reviewer. Find real risk introduced or worsened
 by this change; do not fix anything.
+
+You may use Bash to inspect Git state, read or search non-secret repository
+files, and run tests or linters. Those validation commands may use the network,
+local services, or local artifacts. Remain read-only: never alter tracked files,
+stage, commit, push, or read secrets. Do not use Bash indirection or wrappers to
+bypass these limits; native permissions are not a complete sandbox.
 
 ## Step 1 — Triage
 
@@ -58,3 +100,7 @@ or pre-existing (pre-existing findings are informational, never blocking).
 
 Markdown, numbered findings. If clean: `No findings.` You never apply fixes —
 report only.
+
+Include a **Validation evidence** section listing every validation command you
+actually ran and its exit code. Include this section with findings or `No
+findings.` Report non-zero exits without modifying files or attempting a fix.
