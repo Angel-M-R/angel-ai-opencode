@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,15 +16,47 @@ import (
 )
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	stepStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	cursorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	checkedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	doneStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	selectedCount = lipgloss.NewStyle().Foreground(lipgloss.Color("110"))
+	titleStyle             = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	stepStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	cursorStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	checkedStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	helpStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	noChangeActionStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	successActionStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	updateActionStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	replacementActionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	errorActionStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	selectedCount          = lipgloss.NewStyle().Foreground(lipgloss.Color("110"))
 )
+
+type installerActionPrefix struct {
+	label string
+	style lipgloss.Style
+}
+
+var installerActionPrefixes = []installerActionPrefix{
+	{label: "SIN CAMBIOS", style: noChangeActionStyle},
+	{label: "sin cambios", style: noChangeActionStyle},
+	{label: "CREAR", style: successActionStyle},
+	{label: "INSTALAR", style: successActionStyle},
+	{label: "creado", style: successActionStyle},
+	{label: "instalado", style: successActionStyle},
+	{label: "ACTUALIZAR", style: updateActionStyle},
+	{label: "actualizado", style: updateActionStyle},
+	{label: "REEMPLAZAR", style: replacementActionStyle},
+	{label: "backup", style: replacementActionStyle},
+	{label: "ERROR", style: errorActionStyle},
+}
+
+func recognizedInstallerActionPrefix(line string) (installerActionPrefix, bool) {
+	for _, prefix := range installerActionPrefixes {
+		if strings.HasPrefix(line, prefix.label) &&
+			(len(line) == len(prefix.label) || line[len(prefix.label)] == ' ') {
+			return prefix, true
+		}
+	}
+	return installerActionPrefix{}, false
+}
 
 type phase int
 
@@ -55,6 +88,12 @@ type Model struct {
 	cursor int
 	report []string
 	err    error
+
+	width              int
+	height             int
+	confirmationPlan   []string
+	confirmationOffset int
+	resultOffset       int
 }
 
 // New builds the wizard with every catalog item preselected and extras set to
@@ -119,6 +158,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.report = msg.report
 		m.err = msg.err
 		m.phase = finished
+		m.resultOffset = 0
+		return m, nil
+	case tea.WindowSizeMsg:
+		oldWidth := m.width
+		m.width = msg.Width
+		m.height = msg.Height
+		switch m.phase {
+		case confirming:
+			rows := listVisualRows(m.confirmationPlan, m.width)
+			height := m.confirmationListHeight(len(rows))
+			if oldWidth != m.width {
+				m.confirmationOffset = resizeListOffset(m.confirmationPlan, m.confirmationOffset, oldWidth, m.width, height)
+			} else {
+				m.confirmationOffset = clampListOffset(m.confirmationOffset, len(rows), height)
+			}
+		case finished:
+			rows := listVisualRows(m.report, m.width)
+			height := m.resultListHeight(len(rows))
+			if oldWidth != m.width {
+				m.resultOffset = resizeListOffset(m.report, m.resultOffset, oldWidth, m.width, height)
+			} else {
+				m.resultOffset = clampListOffset(m.resultOffset, len(rows), height)
+			}
+		}
 		return m, nil
 	case tea.KeyMsg:
 		key := msg.String()
@@ -133,7 +196,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case confirming:
 			return m.updateConfirming(key)
 		case finished:
-			return m, tea.Quit
+			return m.updateFinished(key)
 		}
 	}
 	return m, nil
@@ -173,7 +236,7 @@ func (m Model) updateSelecting(key string) (tea.Model, tea.Cmd) {
 			m.phase = extrasPhase
 			m.cursor = 0
 		} else {
-			m.phase = confirming
+			m.enterConfirmation()
 		}
 	}
 	return m, nil
@@ -204,12 +267,134 @@ func (m Model) updateExtras(key string) (tea.Model, tea.Cmd) {
 		m.step = len(m.categories) - 1
 		m.cursor = 0
 	case "enter", "right", "l":
-		m.phase = confirming
+		m.enterConfirmation()
 	}
 	return m, nil
 }
 
+func (m *Model) enterConfirmation() {
+	m.phase = confirming
+	m.confirmationOffset = 0
+	m.confirmationPlan = m.installationPlan()
+}
+
+func (m Model) installationPlan() []string {
+	plan, err := install.PlanInstallation(install.InstallationRequest{
+		Items: m.chosen(), Extras: m.chosenExtras(), AssetsDir: m.assetsDir, ConfigDir: m.configDir,
+	})
+	if err != nil {
+		return []string{"ERROR      " + err.Error()}
+	}
+	return plan
+}
+
+func (m Model) confirmationListHeight(totalRows int) int {
+	return availableListHeight(m.height, m.confirmationChromeHeight(), totalRows)
+}
+
+func (m Model) resultListHeight(totalRows int) int {
+	return availableListHeight(m.height, m.resultChromeHeight(), totalRows)
+}
+
+func availableListHeight(terminalHeight, chromeHeight, totalRows int) int {
+	if totalRows == 0 {
+		return 0
+	}
+	if terminalHeight <= 0 {
+		return totalRows
+	}
+	height := terminalHeight - chromeHeight
+	if height < 0 {
+		return 0
+	}
+	return height
+}
+
+func visualHeight(rendered string, width int) int {
+	if rendered == "" {
+		return 0
+	}
+
+	height := 0
+	for len(rendered) > 0 {
+		line, rest, found := strings.Cut(rendered, "\n")
+		if !found {
+			height += visualLineHeight(line, width)
+			break
+		}
+		height += visualLineHeight(line, width)
+		rendered = rest
+	}
+	return height
+}
+
+func visualLineHeight(line string, width int) int {
+	if width <= 0 {
+		return 1
+	}
+	lineWidth := lipgloss.Width(line)
+	if lineWidth == 0 {
+		return 1
+	}
+	return (lineWidth + width - 1) / width
+}
+
+func clampListOffset(offset, total, height int) int {
+	maxOffset := total - height
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset < 0 {
+		return 0
+	}
+	if offset > maxOffset {
+		return maxOffset
+	}
+	return offset
+}
+
+func navigateListOffset(offset int, key string, total, height int) (int, bool) {
+	switch key {
+	case "up", "k":
+		offset--
+	case "down", "j":
+		offset++
+	case "pgup":
+		offset -= height
+	case "pgdown":
+		offset += height
+	case "home":
+		offset = 0
+	case "end":
+		offset = total
+	default:
+		return offset, false
+	}
+	return clampListOffset(offset, total, height), true
+}
+
+func isListNavigationKey(key string) bool {
+	switch key {
+	case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
+		return true
+	default:
+		return false
+	}
+}
+
 func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
+	if isListNavigationKey(key) {
+		rows := listVisualRows(m.confirmationPlan, m.width)
+		offset, _ := navigateListOffset(
+			m.confirmationOffset,
+			key,
+			len(rows),
+			m.confirmationListHeight(len(rows)),
+		)
+		m.confirmationOffset = offset
+		return m, nil
+	}
+
 	switch key {
 	case "left", "h", "b", "esc":
 		if len(m.extras) > 0 {
@@ -221,6 +406,12 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 	case "enter":
+		plan := m.installationPlan()
+		if !slices.Equal(plan, m.confirmationPlan) {
+			m.confirmationPlan = plan
+			m.confirmationOffset = 0
+			return m, nil
+		}
 		items := m.chosen()
 		extras := m.chosenExtras()
 		return m, func() tea.Msg {
@@ -233,9 +424,26 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateFinished(key string) (tea.Model, tea.Cmd) {
+	rows := listVisualRows(m.report, m.width)
+	if offset, handled := navigateListOffset(
+		m.resultOffset,
+		key,
+		len(rows),
+		m.resultListHeight(len(rows)),
+	); handled {
+		m.resultOffset = offset
+		return m, nil
+	}
+	if key == "enter" || key == "esc" {
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
 func (m Model) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Angel AI — instalador de opencode") + "\n\n")
+	b.WriteString(wizardHeader())
 
 	switch m.phase {
 	case selecting:
@@ -271,59 +479,188 @@ func (m Model) View() string {
 		}
 		b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
 	case confirming:
-		b.WriteString(stepStyle.Render(fmt.Sprintf("Paso %d/%d", m.totalSteps(), m.totalSteps())))
-		b.WriteString("  " + titleStyle.Render("Confirmar instalación") + "\n\n")
-		for i, category := range m.categories {
-			count := 0
-			for _, on := range m.selected[i] {
-				if on {
-					count++
-				}
-			}
-			b.WriteString(fmt.Sprintf("  %s: %s\n", category.Title, selectedCount.Render(fmt.Sprintf("%d/%d", count, len(category.Items)))))
+		b.WriteString(m.confirmationHeader())
+		rows := listVisualRows(m.confirmationPlan, m.width)
+		visible, start, end := orderedListWindow(rows, m.confirmationOffset, m.confirmationListHeight(len(rows)))
+		for _, row := range visible {
+			b.WriteString(row + "\n")
 		}
-		if len(m.extras) > 0 {
-			count := 0
-			for _, on := range m.extraSelected {
-				if on {
-					count++
-				}
-			}
-			b.WriteString(fmt.Sprintf("  Integraciones y extras: %s\n", selectedCount.Render(fmt.Sprintf("%d/%d", count, len(m.extras)))))
-		}
-		plan, planErr := install.PlanInstallation(install.InstallationRequest{
-			Items: m.chosen(), Extras: m.chosenExtras(), AssetsDir: m.assetsDir, ConfigDir: m.configDir,
-		})
-		if planErr != nil {
-			plan = []string{"ERROR      " + planErr.Error()}
-		}
-		b.WriteString("\n" + stepStyle.Render(fmt.Sprintf("%d acciones sobre %s", len(plan), m.configDir)) + "\n")
-		for _, line := range truncate(plan, 12) {
-			b.WriteString("  " + line + "\n")
-		}
-		b.WriteString("\n" + helpStyle.Render("enter instalar · ← volver · q salir"))
+		b.WriteString(confirmationFooter(listRangeFeedback(start, end, len(m.confirmationPlan))))
 	case finished:
-		if m.err != nil {
-			b.WriteString(errorStyle.Render("Error: "+m.err.Error()) + "\n\n")
-		} else {
-			b.WriteString(doneStyle.Render("Instalación completada") + "\n\n")
+		b.WriteString(m.resultHeader())
+		rows := listVisualRows(m.report, m.width)
+		visible, start, end := orderedListWindow(rows, m.resultOffset, m.resultListHeight(len(rows)))
+		for _, row := range visible {
+			b.WriteString(row + "\n")
 		}
-		for _, line := range truncate(m.report, 20) {
-			b.WriteString("  " + line + "\n")
-		}
-		b.WriteString("\n" + helpStyle.Render("pulsa cualquier tecla para salir"))
+		b.WriteString(resultFooter(listRangeFeedback(start, end, len(m.report))))
 	}
 	b.WriteString("\n")
 	return b.String()
 }
 
-func truncate(lines []string, max int) []string {
-	if len(lines) <= max {
-		return lines
+func wizardHeader() string {
+	return titleStyle.Render("Angel AI — instalador de opencode") + "\n\n"
+}
+
+func (m Model) confirmationHeader() string {
+	var b strings.Builder
+	b.WriteString(stepStyle.Render(fmt.Sprintf("Paso %d/%d", m.totalSteps(), m.totalSteps())))
+	b.WriteString("  " + titleStyle.Render("Confirmar instalación") + "\n\n")
+	for i, category := range m.categories {
+		count := 0
+		for _, on := range m.selected[i] {
+			if on {
+				count++
+			}
+		}
+		b.WriteString(fmt.Sprintf("  %s: %s\n", category.Title, selectedCount.Render(fmt.Sprintf("%d/%d", count, len(category.Items)))))
 	}
-	head := make([]string, max, max+1)
-	copy(head, lines[:max])
-	return append(head, fmt.Sprintf("… y %d más", len(lines)-max))
+	if len(m.extras) > 0 {
+		count := 0
+		for _, on := range m.extraSelected {
+			if on {
+				count++
+			}
+		}
+		b.WriteString(fmt.Sprintf("  Integraciones y extras: %s\n", selectedCount.Render(fmt.Sprintf("%d/%d", count, len(m.extras)))))
+	}
+	b.WriteString("\n" + stepStyle.Render(fmt.Sprintf("%d acciones sobre %s", len(m.confirmationPlan), m.configDir)) + "\n")
+	return b.String()
+}
+
+func confirmationFooter(feedback string) string {
+	return helpStyle.Render(feedback) + "\n\n" +
+		helpStyle.Render("↑/↓ · pgup/pgdn · home/end · enter instalar · ← volver · q salir")
+}
+
+func (m Model) resultHeader() string {
+	if m.err != nil {
+		return errorActionStyle.Render("Error:") + " " + m.err.Error() + "\n\n"
+	}
+	return successActionStyle.Render("Instalación completada") + "\n\n"
+}
+
+func resultFooter(feedback string) string {
+	return helpStyle.Render(feedback) + "\n\n" +
+		helpStyle.Render("↑/↓ · pgup/pgdn · home/end · enter/esc/q salir")
+}
+
+func (m Model) confirmationChromeHeight() int {
+	feedback := listRangeFeedback(max(0, len(m.confirmationPlan)-1), len(m.confirmationPlan), len(m.confirmationPlan))
+	return visualHeight(wizardHeader()+m.confirmationHeader()+confirmationFooter(feedback)+"\n", m.width)
+}
+
+func (m Model) resultChromeHeight() int {
+	feedback := listRangeFeedback(max(0, len(m.report)-1), len(m.report), len(m.report))
+	return visualHeight(wizardHeader()+m.resultHeader()+resultFooter(feedback)+"\n", m.width)
+}
+
+type listVisualRow struct {
+	text          string
+	entry         int
+	labelStart    int
+	labelEnd      int
+	labelStyle    lipgloss.Style
+	hasLabelStyle bool
+}
+
+func (row listVisualRow) render() string {
+	if !row.hasLabelStyle {
+		return row.text
+	}
+	return row.text[:row.labelStart] +
+		row.labelStyle.Render(row.text[row.labelStart:row.labelEnd]) +
+		row.text[row.labelEnd:]
+}
+
+func listVisualRows(lines []string, width int) []listVisualRow {
+	rows := make([]listVisualRow, 0, len(lines))
+	for entry, line := range lines {
+		indentedLine := "  " + line
+		prefix, recognized := recognizedInstallerActionPrefix(line)
+		labelStart := len("  ")
+		labelEnd := labelStart + len(prefix.label)
+		rowStart := 0
+		for _, text := range wrapVisualLine(indentedLine, width) {
+			row := listVisualRow{text: text, entry: entry}
+			rowEnd := rowStart + len(text)
+			spanStart := max(labelStart, rowStart)
+			spanEnd := min(labelEnd, rowEnd)
+			if recognized && spanStart < spanEnd {
+				row.labelStart = spanStart - rowStart
+				row.labelEnd = spanEnd - rowStart
+				row.labelStyle = prefix.style
+				row.hasLabelStyle = true
+			}
+			rows = append(rows, row)
+			rowStart = rowEnd
+		}
+	}
+	return rows
+}
+
+func resizeListOffset(lines []string, offset, oldWidth, newWidth, newHeight int) int {
+	oldRows := listVisualRows(lines, oldWidth)
+	if len(oldRows) == 0 {
+		return 0
+	}
+	topEntry := oldRows[clampListOffset(offset, len(oldRows), 1)].entry
+
+	newRows := listVisualRows(lines, newWidth)
+	newOffset := 0
+	for newOffset < len(newRows) && newRows[newOffset].entry < topEntry {
+		newOffset++
+	}
+	return clampListOffset(newOffset, len(newRows), newHeight)
+}
+
+func wrapVisualLine(line string, width int) []string {
+	if width <= 0 || lipgloss.Width(line) <= width {
+		return []string{line}
+	}
+
+	var rows []string
+	var row strings.Builder
+	rowWidth := 0
+	for _, character := range line {
+		characterWidth := lipgloss.Width(string(character))
+		if rowWidth > 0 && rowWidth+characterWidth > width {
+			rows = append(rows, row.String())
+			row.Reset()
+			rowWidth = 0
+		}
+		row.WriteRune(character)
+		rowWidth += characterWidth
+	}
+	rows = append(rows, row.String())
+	return rows
+}
+
+func orderedListWindow(rows []listVisualRow, offset, height int) ([]string, int, int) {
+	if len(rows) == 0 || height == 0 {
+		return nil, 0, 0
+	}
+	offset = clampListOffset(offset, len(rows), height)
+	end := offset + height
+	if end > len(rows) {
+		end = len(rows)
+	}
+	visible := make([]string, end-offset)
+	for index, row := range rows[offset:end] {
+		visible[index] = row.render()
+	}
+	return visible, rows[offset].entry, rows[end-1].entry + 1
+}
+
+func listRangeFeedback(start, end, total int) string {
+	if total == 0 {
+		return "Mostrando 0 de 0"
+	}
+	if end == 0 {
+		return fmt.Sprintf("Mostrando 0 de %d", total)
+	}
+	return fmt.Sprintf("Mostrando %d-%d de %d", start+1, end, total)
 }
 
 // Run starts the wizard.
