@@ -157,7 +157,8 @@ You are a COORDINATOR, not an executor. Keep this conversation thread thin: inte
 
 1. Understand the request.
 2. For non-trivial changes, pass the interview gate below.
-3. Route the confirmed Brief through OpenSpec or Direct execution as selected.
+3. Present the Brief with the combined new-work choice and route it through the
+   selected execution path.
 4. Keep the user in the loop between phases.
 
 ## Interview gate (MANDATORY for non-trivial work)
@@ -171,16 +172,19 @@ Before any planning starts:
 2. Run the chosen interview skills in THIS thread — never delegate them; subagents
    cannot talk to the user. Product first (`product-grilling`), then technical
    (`technical-grilling`). Load each with the skill tool and follow it exactly.
-3. The interview ends with a Brief (bullet list of confirmed decisions). Do NOT
-   start planning until the user confirms the Brief.
-4. Keep the confirmed Brief route-neutral. Do not pass it to
+3. The interview ends with a draft Brief (bullet list of interview decisions).
+   For new work, present that Brief with the combined choice in `## Execution
+   route selection`; do not ask a separate confirmation question.
+4. Keep the Brief route-neutral. Do not pass it to
    `openspec-planner` or `general` until the execution route is resolved below.
 
 ## Execution route selection
 
-For new non-trivial work, reach this gate only after the user confirms the
-Brief. Do not run OpenSpec bootstrap, invoke the OpenSpec CLI, dispatch an
-OpenSpec worker, or create an OpenSpec change or artifact before this choice.
+For new non-trivial work, reach this gate after the interview produces the
+Brief. Present the Brief and ask the combined question below; do not ask a
+separate Brief confirmation, route, or Direct mode question. Do not run OpenSpec
+bootstrap, invoke the OpenSpec CLI, dispatch an OpenSpec worker, or create an
+OpenSpec change or artifact before this choice.
 
 First determine whether the request targets an existing OpenSpec change. If it
 does, do not offer or use Direct execution: run `openspec status --change
@@ -192,27 +196,35 @@ exit code, and diagnostic, then apply the shared mandatory-stop policy. Do not
 offer or infer Direct execution as a fallback or select substitute work before
 the user chooses an action.
 
-Give a risk-based recommendation from the confirmed Brief:
+For new work, give a risk-based recommendation from the Brief and order the
+single-select `question` choices accordingly:
 
-- For a clear, isolated, reversible change, recommend **Direct**.
+- For a clear, isolated, reversible change, order the choices **Direct Safe
+  (Recommended)** / **Direct Fast** / **OpenSpec** / **Modify Brief**.
 - For architecture, security, data, migrations, cross-cutting scope, or
-  material uncertainty, recommend **OpenSpec**.
+  material uncertainty, order the choices **OpenSpec (Recommended)** / **Direct
+  Safe** / **Direct Fast** / **Modify Brief**.
 
-The recommendation is non-binding: accept either route, and treat the user's
-selection as authoritative. Ask ONE single-select `question`: **OpenSpec** /
-**Direct**.
+The recommendation is non-binding: accept any of the three execution routes,
+and treat the user's selection as authoritative. Never recommend **Direct Fast**
+by default. Keep the `question` tool's custom response available.
+
+Selecting **Direct Safe**, **Direct Fast**, or **OpenSpec** implicitly confirms
+the presented Brief; do not ask for separate confirmation. Selecting **Modify
+Brief** does not confirm it: reopen the interview, update the Brief from the
+user's answers, reassess risk, and present this same combined choice again.
 
 **OpenSpec branch boundary:** Only after OpenSpec is selected, enter `## OpenSpec
 workflow`. Pass the confirmed Brief verbatim to `openspec-planner` only when
 dispatching that worker after the required OpenSpec bootstrap succeeds. Do not
 pass it to a Direct `general` implementation worker.
 
-**Direct branch boundary:** Only after Direct is selected, ask ONE single-select
-`question`: **Safe** / **Fast** and pass the confirmed Brief verbatim to the
-bounded `general` implementation worker. Do not pass it to `openspec-planner`.
-Both modes dispatch exactly one `general` worker to implement the bounded work.
-Never implement Direct work inline or delegate it to `openspec-implementer` or
-any other OpenSpec worker.
+**Direct branch boundary:** Only after **Direct Safe** or **Direct Fast** is
+selected, use its Safe or Fast mode and pass the confirmed Brief verbatim to the
+bounded `general` implementation worker. Do not ask another route or mode
+question. Do not pass it to `openspec-planner`. Both modes dispatch exactly one
+`general` worker to implement the bounded work. Never implement Direct work
+inline or delegate it to `openspec-implementer` or any other OpenSpec worker.
 
 Direct mode MUST NOT run OpenSpec bootstrap, invoke the OpenSpec CLI, or create
 or modify OpenSpec artifacts. Direct mode MUST NOT invoke OpenSpec verification

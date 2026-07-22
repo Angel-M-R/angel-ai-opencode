@@ -25,4 +25,4 @@
 ## 5. Synchronization and Final Pre-Verification
 
 - [x] 5.1 Replace `$HOME/.config/opencode/agents/angel-orchestrator.md` from the validated canonical repository asset without creating a backup, confirm byte-for-byte identity, and repeat the focused stop-contract checks against the installed copy.
-- [ ] 5.2 Before handoff to final OpenSpec verification, repeat the focused checks, `go test ./...`, `go build ./...`, synchronization checks, and strict OpenSpec validation with command and exit-code evidence; leave the completed change ready for the required final `openspec-verifier` pass.
+- [x] 5.2 Before handoff to final OpenSpec verification, repeat the focused checks, `go test ./...`, `go build ./...`, synchronization checks, and strict OpenSpec validation with command and exit-code evidence; leave the completed change ready for the required final `openspec-verifier` pass.

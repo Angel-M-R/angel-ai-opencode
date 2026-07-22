@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -28,6 +29,10 @@ var (
 	errorActionStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	selectedCount          = lipgloss.NewStyle().Foreground(lipgloss.Color("110"))
 )
+
+var spinnerFrames = [...]string{"|", "/", "-", "\\"}
+
+const spinnerInterval = 100 * time.Millisecond
 
 type installerActionPrefix struct {
 	label string
@@ -63,9 +68,17 @@ type phase int
 const (
 	selecting phase = iota
 	extrasPhase
+	analyzing
 	confirming
+	installing
 	finished
 )
+
+type spinnerTickMsg struct{}
+
+type plannedMsg struct {
+	plan []string
+}
 
 type installedMsg struct {
 	report []string
@@ -94,6 +107,9 @@ type Model struct {
 	confirmationPlan   []string
 	confirmationOffset int
 	resultOffset       int
+	spinnerFrame       int
+	installAfterPlan   bool
+	asyncFlow          bool
 }
 
 // New builds the wizard with every catalog item preselected and extras set to
@@ -118,6 +134,7 @@ func New(categories []catalog.Category, assetsDir, configDir string) Model {
 		extraSelected: extraSelected,
 		assetsDir:     assetsDir,
 		configDir:     configDir,
+		asyncFlow:     true,
 	}
 }
 
@@ -154,6 +171,23 @@ func (m Model) totalSteps() int {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinnerTickMsg:
+		if m.phase != analyzing && m.phase != installing {
+			return m, nil
+		}
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		return m, spinnerTick()
+	case plannedMsg:
+		if m.phase != analyzing {
+			return m, nil
+		}
+		if m.installAfterPlan && slices.Equal(msg.plan, m.confirmationPlan) {
+			return m.startInstallation()
+		}
+		m.confirmationPlan = msg.plan
+		m.confirmationOffset = 0
+		m.phase = confirming
+		return m, nil
 	case installedMsg:
 		m.report = msg.report
 		m.err = msg.err
@@ -236,7 +270,7 @@ func (m Model) updateSelecting(key string) (tea.Model, tea.Cmd) {
 			m.phase = extrasPhase
 			m.cursor = 0
 		} else {
-			m.enterConfirmation()
+			return m, m.proceedToConfirmation()
 		}
 	}
 	return m, nil
@@ -267,12 +301,38 @@ func (m Model) updateExtras(key string) (tea.Model, tea.Cmd) {
 		m.step = len(m.categories) - 1
 		m.cursor = 0
 	case "enter", "right", "l":
-		m.enterConfirmation()
+		return m, m.proceedToConfirmation()
 	}
 	return m, nil
 }
 
+func spinnerTick() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(time.Time) tea.Msg {
+		return spinnerTickMsg{}
+	})
+}
+
+func (m Model) planCmd() tea.Msg {
+	return plannedMsg{plan: m.installationPlan()}
+}
+
+func (m *Model) proceedToConfirmation() tea.Cmd {
+	if !m.asyncFlow {
+		m.enterConfirmation()
+		return nil
+	}
+	return m.startAnalysis(false)
+}
+
+func (m *Model) startAnalysis(installAfterPlan bool) tea.Cmd {
+	m.phase = analyzing
+	m.spinnerFrame = 0
+	m.installAfterPlan = installAfterPlan
+	return tea.Batch(m.planCmd, spinnerTick())
+}
+
 func (m *Model) enterConfirmation() {
+	m.asyncFlow = false
 	m.phase = confirming
 	m.confirmationOffset = 0
 	m.confirmationPlan = m.installationPlan()
@@ -406,6 +466,9 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 	case "enter":
+		if m.asyncFlow {
+			return m, m.startAnalysis(true)
+		}
 		plan := m.installationPlan()
 		if !slices.Equal(plan, m.confirmationPlan) {
 			m.confirmationPlan = plan
@@ -414,14 +477,25 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 		}
 		items := m.chosen()
 		extras := m.chosenExtras()
-		return m, func() tea.Msg {
-			report, err := install.ApplyInstallation(install.InstallationRequest{
-				Items: items, Extras: extras, AssetsDir: m.assetsDir, ConfigDir: m.configDir,
-			})
-			return installedMsg{report: report, err: err}
-		}
+		return m, installCmd(items, extras, m.assetsDir, m.configDir)
 	}
 	return m, nil
+}
+
+func (m Model) startInstallation() (tea.Model, tea.Cmd) {
+	m.phase = installing
+	m.spinnerFrame = 0
+	cmd := installCmd(m.chosen(), m.chosenExtras(), m.assetsDir, m.configDir)
+	return m, tea.Batch(cmd, spinnerTick())
+}
+
+func installCmd(items []catalog.Item, extras map[string]bool, assetsDir, configDir string) tea.Cmd {
+	return func() tea.Msg {
+		report, err := install.ApplyInstallation(install.InstallationRequest{
+			Items: items, Extras: extras, AssetsDir: assetsDir, ConfigDir: configDir,
+		})
+		return installedMsg{report: report, err: err}
+	}
 }
 
 func (m Model) updateFinished(key string) (tea.Model, tea.Cmd) {
@@ -478,6 +552,8 @@ func (m Model) View() string {
 			b.WriteString("       " + helpStyle.Render(extra.Description) + "\n")
 		}
 		b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
+	case analyzing:
+		b.WriteString(m.loadingView("Analizando archivos…"))
 	case confirming:
 		b.WriteString(m.confirmationHeader())
 		rows := listVisualRows(m.confirmationPlan, m.width)
@@ -486,6 +562,8 @@ func (m Model) View() string {
 			b.WriteString(row + "\n")
 		}
 		b.WriteString(confirmationFooter(listRangeFeedback(start, end, len(m.confirmationPlan))))
+	case installing:
+		b.WriteString(m.loadingView("Instalando…"))
 	case finished:
 		b.WriteString(m.resultHeader())
 		rows := listVisualRows(m.report, m.width)
@@ -497,6 +575,12 @@ func (m Model) View() string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+func (m Model) loadingView(message string) string {
+	frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
+	return cursorStyle.Render(frame) + " " + titleStyle.Render(message) + "\n\n" +
+		helpStyle.Render("q salir")
 }
 
 func wizardHeader() string {

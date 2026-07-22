@@ -66,19 +66,23 @@ func orchestratorBootstrapSection(t *testing.T) string {
 func TestOrchestratorExecutionRouteOrderingContract(t *testing.T) {
 	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
 	requireTextInOrder(t, orchestrator,
-		"Route the confirmed Brief through OpenSpec or Direct execution as selected.",
-		"Keep the confirmed Brief route-neutral.",
+		"Present the Brief with the combined new-work choice and route it through the selected execution path.",
+		"The interview ends with a draft Brief",
+		"do not ask a separate confirmation question.",
+		"Keep the Brief route-neutral.",
 		"## Execution route selection",
-		"Ask ONE single-select `question`: **OpenSpec** / **Direct**.",
+		"Present the Brief and ask the combined question below",
+		"Selecting **Direct Safe**, **Direct Fast**, or **OpenSpec** implicitly confirms the presented Brief",
 		"**OpenSpec branch boundary:** Only after OpenSpec is selected",
-		"**Direct branch boundary:** Only after Direct is selected",
+		"**Direct branch boundary:** Only after **Direct Safe** or **Direct Fast** is selected",
 		"## OpenSpec workflow",
 	)
 
 	section := orchestratorSection(t, "## Execution route selection", "## OpenSpec workflow")
 	requireTextInOrder(t, section,
+		"do not ask a separate Brief confirmation, route, or Direct mode question.",
 		"Do not run OpenSpec bootstrap, invoke the OpenSpec CLI, dispatch an OpenSpec worker, or create an OpenSpec change or artifact before this choice.",
-		"Ask ONE single-select `question`: **OpenSpec** / **Direct**.",
+		"For new work, give a risk-based recommendation from the Brief and order the single-select `question` choices accordingly:",
 	)
 }
 
@@ -87,22 +91,40 @@ func TestOrchestratorDirectRoutingContract(t *testing.T) {
 
 	t.Run("recommendation is risk based and non-binding", func(t *testing.T) {
 		requireTextInOrder(t, section,
-			"For a clear, isolated, reversible change, recommend **Direct**.",
-			"For architecture, security, data, migrations, cross-cutting scope, or material uncertainty, recommend **OpenSpec**.",
-			"The recommendation is non-binding: accept either route, and treat the user's selection as authoritative.",
+			"For a clear, isolated, reversible change, order the choices **Direct Safe (Recommended)** / **Direct Fast** / **OpenSpec** / **Modify Brief**.",
+			"For architecture, security, data, migrations, cross-cutting scope, or material uncertainty, order the choices **OpenSpec (Recommended)** / **Direct Safe** / **Direct Fast** / **Modify Brief**.",
+			"The recommendation is non-binding: accept any of the three execution routes, and treat the user's selection as authoritative.",
+			"Never recommend **Direct Fast** by default.",
+			"Keep the `question` tool's custom response available.",
 		)
 	})
 
-	t.Run("mode choice routes implementation only to general", func(t *testing.T) {
+	t.Run("combined choice confirms or reopens the brief", func(t *testing.T) {
 		requireTextInOrder(t, section,
-			"**Direct branch boundary:** Only after Direct is selected",
-			"ask ONE single-select `question`: **Safe** / **Fast**",
+			"Selecting **Direct Safe**, **Direct Fast**, or **OpenSpec** implicitly confirms the presented Brief; do not ask for separate confirmation.",
+			"Selecting **Modify Brief** does not confirm it",
+			"reopen the interview, update the Brief from the user's answers, reassess risk, and present this same combined choice again.",
+		)
+	})
+
+	t.Run("direct selection routes implementation only to general", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"**Direct branch boundary:** Only after **Direct Safe** or **Direct Fast** is selected",
+			"use its Safe or Fast mode",
 			"pass the confirmed Brief verbatim to the bounded `general` implementation worker",
+			"Do not ask another route or mode question.",
 			"Do not pass it to `openspec-planner`.",
 			"Both modes dispatch exactly one `general` worker to implement the bounded work.",
 			"Never implement Direct work inline or delegate it to `openspec-implementer` or any other OpenSpec worker.",
 		)
 	})
+
+	if strings.Contains(section, "Ask ONE single-select `question`: **OpenSpec** / **Direct**.") {
+		t.Fatal("new work must not use a separate route question")
+	}
+	if strings.Contains(section, "ask ONE single-select `question`: **Safe** / **Fast**") {
+		t.Fatal("Direct work must not use a separate mode question")
+	}
 
 	t.Run("existing targets require successful fresh status", func(t *testing.T) {
 		requireTextInOrder(t, section,
