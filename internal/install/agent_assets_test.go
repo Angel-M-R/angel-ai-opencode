@@ -110,8 +110,10 @@ func TestOrchestratorDirectRoutingContract(t *testing.T) {
 			"do not offer or use Direct execution",
 			"run `openspec status --change <name> --json`",
 			"only when that fresh command succeeds and resolves the referenced existing change",
-			"If the target is missing, stale, or otherwise unresolvable, report that target and stop for user direction.",
-			"Do not offer or infer Direct execution as a fallback.",
+			"If the target is missing, stale, or otherwise unresolvable",
+			"retain and report the target-resolution command, exit code, and diagnostic",
+			"apply the shared mandatory-stop policy",
+			"Do not offer or infer Direct execution as a fallback or select substitute work before the user chooses an action.",
 		)
 	})
 
@@ -152,16 +154,16 @@ func TestOrchestratorSafeDirectExecutionContract(t *testing.T) {
 			"executable verification was available and run",
 			"the worker reports the executable test/build commands and exit codes",
 			"the result is clean under the shared implementation-result policy",
-			"Only after a clean Safe result proceed to the direct Safe review gate.",
+			"Only after a clean Safe result proceed to the direct Safe review gate",
 		)
 	})
 
 	t.Run("unavailable or omitted verification stops without fallback", func(t *testing.T) {
 		requireTextInOrder(t, section,
 			"If executable verification is unavailable or its command/exit-code evidence is omitted",
-			"report the result as not verified and stop without retrying, dispatching a fallback worker, opening reviews, or continuing implementation.",
-			"Unavailable verification must be reported as `partial` or `blocked`.",
-			"Apply the shared mandatory-stop policy to every other unsafe result.",
+			"retain the result and report it as not verified with status `partial` or `blocked`",
+			"apply the shared mandatory-stop policy",
+			"before the user selects an action at a stop, do not retry, dispatch a fallback worker, open reviews, or continue implementation",
 		)
 	})
 }
@@ -183,18 +185,19 @@ func TestOrchestratorCorrectedIntermediateFailureContract(t *testing.T) {
 		requireTextInOrder(t,
 			orchestratorSection(t, "### Safe direct execution", "### Fast direct execution"),
 			"clean under the shared implementation-result policy",
-			"Apply the shared mandatory-stop policy",
+			"apply the shared mandatory-stop policy",
 		)
 		requireTextInOrder(t,
 			orchestratorSection(t, "### Direct review gate", "## Delegation rules"),
 			"clean under the shared implementation-result policy",
-			"Apply the shared mandatory-stop policy",
+			"apply the shared mandatory-stop policy",
 		)
 		requireTextInOrder(t,
 			orchestratorSection(t, "### Implementation stops and completion routing", "### Between phases"),
 			"apply the shared implementation-result policy",
 			"On a shared mandatory stop",
-			"continue or pause under the already selected cadence",
+			"Only after a clean result",
+			"apply the fresh-state invariant and continue automatically",
 		)
 	})
 }
@@ -217,9 +220,100 @@ func TestOrchestratorMandatoryImplementationStopsContract(t *testing.T) {
 		})
 	}
 	requireTextInOrder(t, section,
-		"On a mandatory stop, surface the evidence",
-		"do not retry, dispatch a fallback worker, continue implementation, or advance to the route's next phase.",
+		"On every mandatory stop, apply this shared mandatory-stop policy in two ordered, separate steps:",
+		"First report the blocking status and all retained evidence needed to choose an action",
+		"Then ask exactly one blocker-specific next-action `question`.",
+		"Until the user selects an action, do not retry, continue, broaden scope, select substitute work, advance to the route's next phase, or dispatch any worker.",
 	)
+}
+
+func TestOrchestratorMandatoryStopInteractionContract(t *testing.T) {
+	sharedPolicy := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+
+	t.Run("reports evidence before asking one contextual question", func(t *testing.T) {
+		requireTextInOrder(t, sharedPolicy,
+			"On every mandatory stop, apply this shared mandatory-stop policy in two ordered, separate steps:",
+			"First report the blocking status and all retained evidence needed to choose an action",
+			"Do not ask the stop question before this report.",
+			"Then ask exactly one blocker-specific next-action `question`.",
+		)
+	})
+
+	t.Run("offers a safe stop and custom response", func(t *testing.T) {
+		requireTextInOrder(t, sharedPolicy,
+			"Derive its choices from the reported blocker",
+			"always include a safe stop option",
+			"keep the question tool's custom response available",
+		)
+	})
+
+	t.Run("forbids recovery and worker dispatch until selection", func(t *testing.T) {
+		requireTextInOrder(t, sharedPolicy,
+			"Until the user selects an action",
+			"do not retry, continue, broaden scope, select substitute work, advance to the route's next phase, or dispatch any worker",
+			"Do not infer authorization from the blocker itself.",
+		)
+	})
+
+	stopRoutes := []struct {
+		name         string
+		startHeading string
+		endHeading   string
+		evidence     string
+	}{
+		{
+			name:         "existing target resolution",
+			startHeading: "## Execution route selection",
+			endHeading:   "### Shared implementation-result policy",
+			evidence:     "retain and report the target-resolution command, exit code, and diagnostic",
+		},
+		{
+			name:         "OpenSpec bootstrap",
+			startHeading: "### Bootstrap gate before OpenSpec workers",
+			endHeading:   "### Workers and their official skills",
+			evidence:     "retain and report its status, diagnostic, commands, and exit codes",
+		},
+		{
+			name:         "planned-task implementation",
+			startHeading: "### Implementation stops and completion routing",
+			endHeading:   "### Between phases",
+			evidence:     "reporting the worker and command evidence or state conflict before asking its one next-action question",
+		},
+		{
+			name:         "final verification",
+			startHeading: "### Implementation stops and completion routing",
+			endHeading:   "### Between phases",
+			evidence:     "retain its status, commands, exit codes, and diagnostic",
+		},
+		{
+			name:         "Direct Safe",
+			startHeading: "### Safe direct execution",
+			endHeading:   "### Fast direct execution",
+			evidence:     "retain the result and report it as not verified with status `partial` or `blocked`",
+		},
+		{
+			name:         "Direct Fast",
+			startHeading: "### Fast direct execution",
+			endHeading:   "### Direct review gate",
+			evidence:     "report the retained result and command evidence",
+		},
+		{
+			name:         "Direct review fix",
+			startHeading: "### Direct review gate",
+			endHeading:   "## Delegation rules",
+			evidence:     "retain the fix result and command evidence, report it as `partial` or `blocked`",
+		},
+	}
+
+	for _, route := range stopRoutes {
+		t.Run(route.name+" references shared policy", func(t *testing.T) {
+			requireTextInOrder(t,
+				orchestratorSection(t, route.startHeading, route.endHeading),
+				route.evidence,
+				"apply the shared mandatory-stop policy",
+			)
+		})
+	}
 }
 
 func TestOrchestratorFastDirectExecutionContract(t *testing.T) {
@@ -254,7 +348,9 @@ func TestOrchestratorDirectReviewContract(t *testing.T) {
 			"MUST NOT use `openspec-implementer`",
 			"must run the existing applicable tests and build commands and return their executable command/exit-code evidence",
 			"Unavailable or omitted verification means the fix is not verified",
-			"report and stop without retrying or rerunning a reviewer",
+			"retain the fix result and command evidence, report it as `partial` or `blocked`",
+			"apply the shared mandatory-stop policy",
+			"Do not retry, broaden the selected finding set, rerun a reviewer, or dispatch another worker before the user selects an action.",
 		)
 	})
 
@@ -278,14 +374,14 @@ func TestOrchestratorOpenSpecBranchReachesWorkflowBoundary(t *testing.T) {
 	workflow := orchestratorSection(t, "## OpenSpec workflow", "## Language")
 	requireTextInOrder(t, workflow,
 		"Enter this workflow boundary only after the user selects OpenSpec for new work, or after fresh successful status resolution of a referenced existing change.",
-		"The OpenSpec branch preserves the bootstrap gate, official planner and artifact lifecycle, bounded implementation cadence, verification policy, review gate and review-fix routing, and archive path below.",
+		"The OpenSpec branch preserves the bootstrap gate, official planner and artifact lifecycle, bounded automatic implementation, verification policy, review gate and review-fix routing, and archive path below.",
 	)
 
 	t.Run("retains openspec review-fix routing", func(t *testing.T) {
 		requireTextInOrder(t, workflow,
 			"**Review-fix routing:** Only findings the user selects become a task",
 			"delegate them to `openspec-implementer` as one bounded batch",
-			"This finding-ID batch is outside the planned-task cadence",
+			"This finding-ID batch is outside the automatic planned-task loop",
 			"Never delegate a fix for an unselected or SUGGESTION-only finding",
 			"re-run only the reviewers whose findings were addressed",
 			"otherwise proceed to archive",
@@ -303,7 +399,9 @@ func TestOrchestratorOpenSpecBootstrapContract(t *testing.T) {
 			"wait for it to succeed",
 			"Add the returned context key to the set only after success",
 			"If bootstrap blocks or fails, do not launch the OpenSpec worker",
-			"Only then dispatch the requested OpenSpec worker",
+			"retain and report its status, diagnostic, commands, and exit codes",
+			"apply the shared mandatory-stop policy",
+			"Only after a successful bootstrap may the requested OpenSpec worker be dispatched",
 		)
 	})
 

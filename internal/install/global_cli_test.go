@@ -113,7 +113,7 @@ func TestInstallGlobalCLIDoesNotFallbackAfterNPMFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = installGlobalCLI(globalCLIDescriptor{
-		displayName: "Example CLI", executable: "example", packageSpec: "@example/cli@latest",
+		displayName: "Example CLI", executable: "example", installSpec: "@example/cli@latest",
 	}, manager, commands)
 	if err == nil || !strings.Contains(err.Error(), "installing Example CLI with npm") {
 		t.Fatalf("expected npm install error, got %v", err)
@@ -130,7 +130,7 @@ func TestValidateGlobalCLIRuntimesChecksOpenSpecNodeFloor(t *testing.T) {
 	descriptor := globalCLIDescriptor{
 		displayName:        "OpenSpec",
 		executable:         "openspec",
-		packageSpec:        "@fission-ai/openspec@latest",
+		installSpec:        "@fission-ai/openspec@latest",
 		minimumNodeVersion: openSpecMinimumNodeVersion,
 	}
 	tests := []struct {
@@ -191,7 +191,7 @@ func TestValidateGlobalCLIRuntimesSkipsNodeWithoutRequirement(t *testing.T) {
 	}
 
 	if err := validateGlobalCLIRuntimes([]globalCLIDescriptor{{
-		displayName: "CodeGraph", executable: "codegraph", packageSpec: "@colbymchenry/codegraph@latest",
+		displayName: "CodeGraph", executable: "codegraph", installSpec: "@colbymchenry/codegraph@latest",
 	}}, commands); err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestInstallGlobalCLIUsesInjectedCommandsAndVerifiesExecutable(t *testing.T)
 	descriptor := globalCLIDescriptor{
 		displayName: "Example CLI",
 		executable:  "example",
-		packageSpec: "@example/cli@latest",
+		installSpec: "@example/cli@latest",
 	}
 	manager := globalPackageManager{
 		name:       "npm",
@@ -233,11 +233,11 @@ func TestInstallGlobalCLIUsesInjectedCommandsAndVerifiesExecutable(t *testing.T)
 	if gotPath != manager.executable {
 		t.Fatalf("command path = %q, want %q", gotPath, manager.executable)
 	}
-	wantArgs := []string{"install", "--global", descriptor.packageSpec}
+	wantArgs := []string{"install", "--global", descriptor.installSpec}
 	if !reflect.DeepEqual(gotArgs, wantArgs) {
 		t.Fatalf("command arguments = %v, want %v", gotArgs, wantArgs)
 	}
-	if line != "instalado  "+descriptor.packageSpec {
+	if line != "instalado  "+descriptor.installSpec {
 		t.Fatalf("result = %q", line)
 	}
 }
@@ -246,7 +246,7 @@ func TestInstallGlobalCLIFailsWhenExecutableIsUnavailableAfterCommand(t *testing
 	descriptor := globalCLIDescriptor{
 		displayName: "Example CLI",
 		executable:  "example",
-		packageSpec: "@example/cli@latest",
+		installSpec: "@example/cli@latest",
 	}
 	commands := globalCLICommands{
 		lookPath: func(string) (string, error) { return "", errors.New("not found") },

@@ -50,15 +50,16 @@ func PlanInstallation(request InstallationRequest) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands); err != nil {
+	snapshot, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands)
+	if err != nil {
 		return nil, err
 	}
-	lines := make([]string, 0, len(prepared.files)+len(prepared.globalCLIs))
+	lines := make([]string, 0, len(prepared.files)+len(snapshot.inspections))
 	for _, file := range prepared.files {
 		lines = append(lines, file.planLine())
 	}
-	for _, descriptor := range prepared.globalCLIs {
-		lines = append(lines, "INSTALAR   "+descriptor.packageSpec)
+	for _, inspection := range snapshot.inspections {
+		lines = append(lines, inspection.reportLine())
 	}
 	return lines, nil
 }
@@ -73,19 +74,20 @@ func ApplyInstallation(request InstallationRequest) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	manager, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands)
+	snapshot, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands)
 	if err != nil {
 		return nil, err
 	}
+	reprepareAfterCLIs := len(snapshot.inspections) > 0
 	var done []string
-	for _, descriptor := range prepared.globalCLIs {
-		line, err := installGlobalCLI(descriptor, manager, systemGlobalCLICommands)
+	for _, inspection := range snapshot.inspections {
+		line, err := applyGlobalCLIInspection(inspection, snapshot.manager, systemGlobalCLICommands)
 		if err != nil {
 			return done, err
 		}
 		done = append(done, line)
 	}
-	if len(prepared.globalCLIs) > 0 {
+	if reprepareAfterCLIs {
 		prepared, err = prepareInstallationForApply(request)
 		if err != nil {
 			return done, err

@@ -69,354 +69,641 @@ func hasLineContaining(lines []string, value string) bool {
 	return false
 }
 
-func TestPlanInstallationPrefersNPM(t *testing.T) {
-	var lookups []string
-	useGlobalCLICommands(t, globalCLICommands{
+type injectedCLIEnvironment struct {
+	t                *testing.T
+	manager          string
+	nodeVersion      string
+	pnpmGlobalBin    []byte
+	localVersions    map[string]string
+	registrations    map[string]bool
+	latestVersions   map[string]string
+	registryOutput   map[string][]byte
+	registryErrors   map[string]error
+	versionOutput    map[string][]byte
+	versionErrors    map[string]error
+	installationErrs map[string]error
+	events           []string
+	installations    []string
+}
+
+func newInjectedCLIEnvironment(t *testing.T, manager string) *injectedCLIEnvironment {
+	t.Helper()
+	return &injectedCLIEnvironment{
+		t:                t,
+		manager:          manager,
+		nodeVersion:      "v22.0.0\n",
+		pnpmGlobalBin:    []byte("/global/pnpm/bin\n"),
+		localVersions:    map[string]string{},
+		registrations:    map[string]bool{},
+		latestVersions:   map[string]string{},
+		registryOutput:   map[string][]byte{},
+		registryErrors:   map[string]error{},
+		versionOutput:    map[string][]byte{},
+		versionErrors:    map[string]error{},
+		installationErrs: map[string]error{},
+	}
+}
+
+func (environment *injectedCLIEnvironment) commands() globalCLICommands {
+	return globalCLICommands{
 		lookPath: func(name string) (string, error) {
-			lookups = append(lookups, name)
-			if name == "npm" {
-				return "/tools/npm", nil
+			environment.events = append(environment.events, "look "+name)
+			switch name {
+			case "npm":
+				if environment.manager == "npm" {
+					return "/tools/npm", nil
+				}
+			case "pnpm":
+				return "/tools/pnpm", nil
+			case "node":
+				return "/tools/node", nil
+			case "codegraph", "openspec":
+				if _, ok := environment.localVersions[name]; ok {
+					return "/tools/" + name, nil
+				}
 			}
 			return "", errors.New("not found")
 		},
 		run: func(path string, args ...string) ([]byte, error) {
-			t.Fatalf("planning with npm must not run %q %v", path, args)
+			environment.events = append(environment.events, "run "+strings.Join(append([]string{path}, args...), " "))
+			if path == "/tools/node" {
+				return []byte(environment.nodeVersion), nil
+			}
+			if path == "/tools/pnpm" && reflect.DeepEqual(args, []string{"bin", "-g"}) {
+				return environment.pnpmGlobalBin, nil
+			}
+			if path == "/tools/npm" || path == "/tools/pnpm" {
+				return environment.runManagerCommand(path, args)
+			}
+			for _, descriptor := range globalCLIDescriptors {
+				if path == "/tools/"+descriptor.executable && reflect.DeepEqual(args, descriptor.versionArgs) {
+					if err := environment.versionErrors[descriptor.executable]; err != nil {
+						return environment.versionOutput[descriptor.executable], err
+					}
+					if output, ok := environment.versionOutput[descriptor.executable]; ok {
+						return output, nil
+					}
+					return []byte(environment.localVersions[descriptor.executable] + "\n"), nil
+				}
+			}
+			environment.t.Fatalf("unexpected injected command %q %v", path, args)
 			return nil, nil
 		},
-	})
-
-	plan, err := PlanInstallation(InstallationRequest{
-		Extras:    map[string]bool{codegraphOptionKey: true},
-		AssetsDir: testCodegraphAssets(t),
-		ConfigDir: t.TempDir(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(lookups, []string{"npm"}) {
-		t.Fatalf("executable lookups = %v, want npm only", lookups)
-	}
-	if !hasLineContaining(plan, codegraphPackage) {
-		t.Fatalf("CodeGraph latest action missing from plan: %v", plan)
 	}
 }
 
-func TestPlanInstallationUsesValidatedPNPMFallback(t *testing.T) {
-	var commandsRun []string
-	useGlobalCLICommands(t, globalCLICommands{
-		lookPath: func(name string) (string, error) {
-			if name == "pnpm" {
-				return "/tools/pnpm", nil
+func (environment *injectedCLIEnvironment) runManagerCommand(path string, args []string) ([]byte, error) {
+	environment.t.Helper()
+	if len(args) == 0 {
+		environment.t.Fatalf("manager command has no arguments: %q", path)
+	}
+	switch args[0] {
+	case "list":
+		packageName := args[len(args)-1]
+		return packageRegistrationJSON(environment.t, environment.manager, packageName, environment.registrations[packageName]), nil
+	case "view":
+		packageName := strings.TrimSuffix(args[1], "@latest")
+		if err := environment.registryErrors[packageName]; err != nil {
+			return environment.registryOutput[packageName], err
+		}
+		if output, ok := environment.registryOutput[packageName]; ok {
+			return output, nil
+		}
+		output, err := json.Marshal(environment.latestVersions[packageName])
+		if err != nil {
+			environment.t.Fatal(err)
+		}
+		return output, nil
+	case "install", "add":
+		installSpec := args[len(args)-1]
+		environment.installations = append(environment.installations, installSpec)
+		if err := environment.installationErrs[installSpec]; err != nil {
+			return []byte("injected install failure\n"), err
+		}
+		descriptor := descriptorForInstallSpec(environment.t, installSpec)
+		environment.localVersions[descriptor.executable] = environment.latestVersions[descriptor.registryPackage]
+		return nil, nil
+	default:
+		environment.t.Fatalf("unexpected injected manager command %q %v", path, args)
+		return nil, nil
+	}
+}
+
+func packageRegistrationJSON(t *testing.T, manager, packageName string, registered bool) []byte {
+	t.Helper()
+	dependencies := map[string]any{}
+	if registered {
+		dependencies[packageName] = map[string]any{"version": "1.0.0"}
+	}
+	var value any = map[string]any{"dependencies": dependencies}
+	if manager == "pnpm" {
+		value = []any{value}
+	}
+	output, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return output
+}
+
+func descriptorForInstallSpec(t *testing.T, installSpec string) globalCLIDescriptor {
+	t.Helper()
+	for _, descriptor := range globalCLIDescriptors {
+		if descriptor.installSpec == installSpec {
+			return descriptor
+		}
+	}
+	t.Fatalf("unknown install spec %q", installSpec)
+	return globalCLIDescriptor{}
+}
+
+func installationRequestForDescriptors(
+	t *testing.T,
+	target string,
+	withManagedFile bool,
+	descriptors ...globalCLIDescriptor,
+) InstallationRequest {
+	t.Helper()
+	extras := make(map[string]bool, len(descriptors))
+	for _, descriptor := range descriptors {
+		extras[descriptor.optionKey] = true
+	}
+	request := InstallationRequest{
+		Extras:    extras,
+		AssetsDir: testCodegraphAssets(t),
+		ConfigDir: target,
+	}
+	if withManagedFile {
+		source := filepath.Join(t.TempDir(), "managed.md")
+		writeTestFile(t, source, "managed\n")
+		request.Items = []catalog.Item{{
+			Name: "managed", Source: source, Dest: "managed.md", Kind: catalog.CopyFile,
+		}}
+	}
+	return request
+}
+
+func assertNoConfigurationWrites(t *testing.T, target string) {
+	t.Helper()
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("configuration was written before CLI success: %v", entries)
+	}
+}
+
+func assertNoCleanupOrInstall(t *testing.T, environment *injectedCLIEnvironment) {
+	t.Helper()
+	if len(environment.installations) != 0 {
+		t.Fatalf("unexpected package installations: %v", environment.installations)
+	}
+	for _, event := range environment.events {
+		for _, cleanup := range []string{" uninstall ", " remove ", " unlink "} {
+			if strings.Contains(" "+event+" ", cleanup) {
+				t.Fatalf("unexpected cleanup command: %s", event)
 			}
-			return "", errors.New("not found")
-		},
-		run: func(path string, args ...string) ([]byte, error) {
-			commandsRun = append(commandsRun, strings.Join(append([]string{path}, args...), " "))
-			return []byte("/global/pnpm/bin\n"), nil
-		},
-	})
-
-	plan, err := PlanInstallation(InstallationRequest{
-		Extras:    map[string]bool{codegraphOptionKey: true},
-		AssetsDir: testCodegraphAssets(t),
-		ConfigDir: t.TempDir(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(commandsRun, []string{"/tools/pnpm bin -g"}) {
-		t.Fatalf("planning commands = %v", commandsRun)
-	}
-	if !hasLineContaining(plan, codegraphPackage) {
-		t.Fatalf("CodeGraph latest action missing from plan: %v", plan)
+		}
 	}
 }
 
-func TestPlanInstallationRejectsInvalidPNPMFallback(t *testing.T) {
-	tests := []struct {
+func indexOfEventContaining(events []string, value string) int {
+	for index, event := range events {
+		if strings.Contains(event, value) {
+			return index
+		}
+	}
+	return -1
+}
+
+func TestInjectedGlobalCLIManagerSelectionAndProbes(t *testing.T) {
+	t.Run("npm preferred", func(t *testing.T) {
+		environment := newInjectedCLIEnvironment(t, "npm")
+		environment.latestVersions[codegraphRegistryPackage] = "2.0.0"
+		useGlobalCLICommands(t, environment.commands())
+
+		plan, err := PlanInstallation(installationRequestForDescriptors(
+			t, t.TempDir(), false, globalCLIDescriptors[0],
+		))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasLineContaining(plan, codegraphPackage) {
+			t.Fatalf("CodeGraph install action missing from plan: %v", plan)
+		}
+		if !reflect.DeepEqual(environment.events[:1], []string{"look npm"}) {
+			t.Fatalf("manager selection events = %v", environment.events)
+		}
+		for _, command := range []string{
+			"run /tools/npm list --global --depth=0 --json " + codegraphRegistryPackage,
+			"run /tools/npm view " + codegraphPackage + " version --json",
+		} {
+			if indexOfEventContaining(environment.events, command) < 0 {
+				t.Errorf("selected npm probe missing: %s; events=%v", command, environment.events)
+			}
+		}
+		if indexOfEventContaining(environment.events, "/tools/pnpm") >= 0 {
+			t.Fatalf("unselected pnpm was queried: %v", environment.events)
+		}
+	})
+
+	t.Run("validated pnpm fallback", func(t *testing.T) {
+		environment := newInjectedCLIEnvironment(t, "pnpm")
+		environment.latestVersions[codegraphRegistryPackage] = "2.0.0"
+		useGlobalCLICommands(t, environment.commands())
+
+		if _, err := PlanInstallation(installationRequestForDescriptors(
+			t, t.TempDir(), false, globalCLIDescriptors[0],
+		)); err != nil {
+			t.Fatal(err)
+		}
+		binIndex := indexOfEventContaining(environment.events, "run /tools/pnpm bin -g")
+		listIndex := indexOfEventContaining(environment.events, "run /tools/pnpm list --global --depth=0 --json "+codegraphRegistryPackage)
+		viewIndex := indexOfEventContaining(environment.events, "run /tools/pnpm view "+codegraphPackage+" version --json")
+		if binIndex < 0 || listIndex <= binIndex || viewIndex <= listIndex {
+			t.Fatalf("pnpm validation/probe order = %v", environment.events)
+		}
+		if indexOfEventContaining(environment.events, "run /tools/npm") >= 0 {
+			t.Fatalf("unselected npm was queried after fallback: %v", environment.events)
+		}
+	})
+
+	for _, test := range []struct {
 		name   string
 		output []byte
-		err    error
 		want   string
 	}{
-		{name: "empty global bin", output: []byte(" \n"), want: "empty path"},
-		{name: "global bin failure", output: []byte("PNPM_HOME is unset\n"), err: errors.New("exit 1"), want: "PNPM_HOME is unset"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			useGlobalCLICommands(t, globalCLICommands{
-				lookPath: func(name string) (string, error) {
-					if name == "pnpm" {
-						return "/tools/pnpm", nil
-					}
-					return "", errors.New("not found")
-				},
-				run: func(string, ...string) ([]byte, error) { return test.output, test.err },
-			})
-
-			_, err := PlanInstallation(InstallationRequest{
-				Extras:    map[string]bool{codegraphOptionKey: true},
-				AssetsDir: testCodegraphAssets(t),
-				ConfigDir: t.TempDir(),
-			})
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("expected error containing %q, got %v", test.want, err)
-			}
-		})
-	}
-}
-
-func TestPlanInstallationChecksOpenSpecNodeVersion(t *testing.T) {
-	tests := []struct {
-		name      string
-		version   string
-		wantError string
-	}{
-		{name: "supported", version: "v20.19.0\n"},
-		{name: "unsupported", version: "v20.18.1\n", wantError: "requires Node.js >=20.19.0"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			useGlobalCLICommands(t, globalCLICommands{
-				lookPath: func(name string) (string, error) { return "/tools/" + name, nil },
-				run: func(path string, args ...string) ([]byte, error) {
-					if path != "/tools/node" || !reflect.DeepEqual(args, []string{"--version"}) {
-						t.Fatalf("unexpected planning command %q %v", path, args)
-					}
-					return []byte(test.version), nil
-				},
-			})
-
-			plan, err := PlanInstallation(InstallationRequest{
-				Extras:    map[string]bool{openSpecOptionKey: true},
-				ConfigDir: t.TempDir(),
-			})
-			if test.wantError != "" {
-				if err == nil || !strings.Contains(err.Error(), test.wantError) {
-					t.Fatalf("expected error containing %q, got %v", test.wantError, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !hasLineContaining(plan, openSpecPackage) {
-				t.Fatalf("OpenSpec latest action missing from plan: %v", plan)
-			}
-		})
-	}
-}
-
-func TestPlanInstallationIsNonMutatingForExistingSelectedCLIs(t *testing.T) {
-	assets := testCodegraphAssets(t)
-	source := filepath.Join(assets, "managed.md")
-	writeTestFile(t, source, "desired\n")
-	target := t.TempDir()
-	destination := filepath.Join(target, "managed.md")
-	writeTestFile(t, destination, "original\n")
-
-	var commandsRun []string
-	useGlobalCLICommands(t, globalCLICommands{
-		lookPath: func(name string) (string, error) {
-			return "/tools/" + name, nil
-		},
-		run: func(path string, args ...string) ([]byte, error) {
-			commandsRun = append(commandsRun, strings.Join(append([]string{path}, args...), " "))
-			if path == "/tools/node" {
-				return []byte("v22.0.0\n"), nil
-			}
-			return nil, errors.New("package installation attempted during planning")
-		},
-	})
-
-	plan, err := PlanInstallation(InstallationRequest{
-		Items: []catalog.Item{{
-			Name: "managed", Source: source, Dest: "managed.md", Kind: catalog.CopyFile,
-		}},
-		Extras: map[string]bool{
-			codegraphOptionKey: true,
-			openSpecOptionKey:  true,
-		},
-		AssetsDir: assets,
-		ConfigDir: target,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, err := os.ReadFile(destination); err != nil || string(got) != "original\n" {
-		t.Fatalf("planning mutated destination: content=%q err=%v", got, err)
-	}
-	if !reflect.DeepEqual(commandsRun, []string{"/tools/node --version"}) {
-		t.Fatalf("planning commands = %v, want only Node.js preflight", commandsRun)
-	}
-	for _, packageSpec := range []string{codegraphPackage, openSpecPackage} {
-		if !hasLineContaining(plan, packageSpec) {
-			t.Errorf("existing selected CLI %s missing from plan: %v", packageSpec, plan)
-		}
-	}
-}
-
-func TestApplyInstallationUpdatesSelectedCLIsInOrderAndRepreparesOnce(t *testing.T) {
-	preparations := countApplyPreparations(t)
-	target := t.TempDir()
-	var packageCommands []string
-	var executableChecks []string
-	useGlobalCLICommands(t, globalCLICommands{
-		lookPath: func(name string) (string, error) {
-			switch name {
-			case "codegraph", "openspec":
-				executableChecks = append(executableChecks, name)
-			}
-			return "/tools/" + name, nil
-		},
-		run: func(path string, args ...string) ([]byte, error) {
-			if path == "/tools/node" {
-				return []byte("v22.0.0\n"), nil
-			}
-			packageCommands = append(packageCommands, strings.Join(args, " "))
-			return nil, nil
-		},
-	})
-
-	report, err := ApplyInstallation(InstallationRequest{
-		Extras: map[string]bool{
-			codegraphOptionKey: true,
-			openSpecOptionKey:  true,
-		},
-		AssetsDir: testCodegraphAssets(t),
-		ConfigDir: target,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantCommands := []string{
-		"install --global " + codegraphPackage,
-		"install --global " + openSpecPackage,
-	}
-	if !reflect.DeepEqual(packageCommands, wantCommands) {
-		t.Fatalf("package commands = %v, want %v", packageCommands, wantCommands)
-	}
-	if !reflect.DeepEqual(executableChecks, []string{"codegraph", "openspec"}) {
-		t.Fatalf("post-install executable checks = %v", executableChecks)
-	}
-	if *preparations != 2 {
-		t.Fatalf("preparation count = %d, want initial preparation plus one repreparation", *preparations)
-	}
-	if len(report) < 2 || report[0] != "instalado  "+codegraphPackage || report[1] != "instalado  "+openSpecPackage {
-		t.Fatalf("CLI results are not in descriptor order: %v", report)
-	}
-	var config map[string]any
-	rawConfig, err := os.ReadFile(filepath.Join(target, "opencode.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(rawConfig, &config); err != nil {
-		t.Fatal(err)
-	}
-	mcp, _ := config["mcp"].(map[string]any)
-	if _, ok := mcp["codegraph"]; !ok {
-		t.Fatalf("CodeGraph MCP missing after shared CLI updates: %v", config)
-	}
-	agents, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(agents), "<!-- codegraph-guidance -->") {
-		t.Fatalf("CodeGraph AGENTS.md guidance missing after shared CLI updates: %s", agents)
-	}
-}
-
-func TestApplyInstallationReturnsPartialCLISuccessWithoutConfigurationWrites(t *testing.T) {
-	preparations := countApplyPreparations(t)
-	assets := testCodegraphAssets(t)
-	source := filepath.Join(assets, "managed.md")
-	writeTestFile(t, source, "managed\n")
-	target := t.TempDir()
-	var packageCommands []string
-	useGlobalCLICommands(t, globalCLICommands{
-		lookPath: func(name string) (string, error) { return "/tools/" + name, nil },
-		run: func(path string, args ...string) ([]byte, error) {
-			if path == "/tools/node" {
-				return []byte("v22.0.0\n"), nil
-			}
-			packageCommands = append(packageCommands, strings.Join(args, " "))
-			if args[len(args)-1] == openSpecPackage {
-				return []byte("registry unavailable\n"), errors.New("exit 1")
-			}
-			return nil, nil
-		},
-	})
-
-	report, err := ApplyInstallation(InstallationRequest{
-		Items: []catalog.Item{{
-			Name: "managed", Source: source, Dest: "managed.md", Kind: catalog.CopyFile,
-		}},
-		Extras: map[string]bool{
-			codegraphOptionKey: true,
-			openSpecOptionKey:  true,
-		},
-		AssetsDir: assets,
-		ConfigDir: target,
-	})
-	if err == nil || !strings.Contains(err.Error(), "installing OpenSpec with npm") {
-		t.Fatalf("expected second CLI failure, got %v", err)
-	}
-	if !reflect.DeepEqual(report, []string{"instalado  " + codegraphPackage}) {
-		t.Fatalf("partial CLI report = %v", report)
-	}
-	wantCommands := []string{
-		"install --global " + codegraphPackage,
-		"install --global " + openSpecPackage,
-	}
-	if !reflect.DeepEqual(packageCommands, wantCommands) {
-		t.Fatalf("package commands = %v, want %v", packageCommands, wantCommands)
-	}
-	if *preparations != 1 {
-		t.Fatalf("preparation count after CLI failure = %d, want 1", *preparations)
-	}
-	for _, path := range []string{
-		filepath.Join(target, "managed.md"),
-		filepath.Join(target, "opencode.json"),
-		filepath.Join(target, "AGENTS.md"),
+		{name: "empty pnpm global bin", output: []byte(" \n"), want: "empty path"},
+		{name: "failed pnpm global bin", output: []byte("PNPM_HOME is unset\n"), want: "PNPM_HOME is unset"},
 	} {
-		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
-			t.Errorf("configuration path was written after CLI failure: %s (err=%v)", path, statErr)
+		t.Run(test.name, func(t *testing.T) {
+			environment := newInjectedCLIEnvironment(t, "pnpm")
+			environment.pnpmGlobalBin = test.output
+			commands := environment.commands()
+			if strings.HasPrefix(test.name, "failed") {
+				baseRun := commands.run
+				commands.run = func(path string, args ...string) ([]byte, error) {
+					output, err := baseRun(path, args...)
+					if path == "/tools/pnpm" && reflect.DeepEqual(args, []string{"bin", "-g"}) {
+						return output, errors.New("exit 1")
+					}
+					return output, err
+				}
+			}
+			useGlobalCLICommands(t, commands)
+			_, err := PlanInstallation(installationRequestForDescriptors(
+				t, t.TempDir(), false, globalCLIDescriptors[0],
+			))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected pnpm validation error containing %q, got %v", test.want, err)
+			}
+			if indexOfEventContaining(environment.events, " list ") >= 0 ||
+				indexOfEventContaining(environment.events, " view ") >= 0 {
+				t.Fatalf("package probes ran before pnpm validation: %v", environment.events)
+			}
+		})
+	}
+}
+
+func TestInjectedGlobalCLIClassificationsInPlanAndApply(t *testing.T) {
+	classifications := []struct {
+		name       string
+		installed  string
+		latest     string
+		registered bool
+		status     string
+	}{
+		{name: "current", installed: "2.0.0", latest: "2.0.0", registered: true, status: "current"},
+		{name: "outdated", installed: "1.0.0", latest: "2.0.0", registered: true, status: "outdated"},
+		{name: "ahead", installed: "3.0.0", latest: "2.0.0", registered: true, status: "ahead"},
+		{name: "absent-installable", latest: "2.0.0", status: "install"},
+		{name: "working-unregistered", installed: "2.0.0", latest: "2.0.0", status: "current"},
+	}
+
+	for _, descriptor := range globalCLIDescriptors {
+		for _, classification := range classifications {
+			t.Run(descriptor.displayName+"/"+classification.name, func(t *testing.T) {
+				setup := func(t *testing.T) *injectedCLIEnvironment {
+					environment := newInjectedCLIEnvironment(t, "npm")
+					environment.registrations[descriptor.registryPackage] = classification.registered
+					environment.latestVersions[descriptor.registryPackage] = classification.latest
+					if classification.installed != "" {
+						environment.localVersions[descriptor.executable] = classification.installed
+					}
+					return environment
+				}
+
+				t.Run("plan", func(t *testing.T) {
+					environment := setup(t)
+					target := t.TempDir()
+					useGlobalCLICommands(t, environment.commands())
+					plan, err := PlanInstallation(installationRequestForDescriptors(t, target, false, descriptor))
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := descriptor.displayName + ": " + classification.status
+					if classification.status == "install" {
+						want = "INSTALAR   " + descriptor.installSpec
+					}
+					if !hasLineContaining(plan, want) {
+						t.Fatalf("classification %q missing from plan: %v", want, plan)
+					}
+					assertNoCleanupOrInstall(t, environment)
+					assertNoConfigurationWrites(t, target)
+				})
+
+				t.Run("apply", func(t *testing.T) {
+					environment := setup(t)
+					target := t.TempDir()
+					useGlobalCLICommands(t, environment.commands())
+					report, err := ApplyInstallation(installationRequestForDescriptors(t, target, false, descriptor))
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := descriptor.displayName + ": " + classification.status
+					if classification.status == "install" {
+						want = "instalado  " + descriptor.installSpec + " (version " + classification.latest + ")"
+						if !reflect.DeepEqual(environment.installations, []string{descriptor.installSpec}) {
+							t.Fatalf("installations = %v", environment.installations)
+						}
+					} else {
+						assertNoCleanupOrInstall(t, environment)
+					}
+					if !hasLineContaining(report, want) {
+						t.Fatalf("classification %q missing from final report: %v", want, report)
+					}
+				})
+			})
 		}
 	}
 }
 
-func TestApplyInstallationRequiresPostInstallExecutable(t *testing.T) {
-	target := t.TempDir()
-	source := filepath.Join(t.TempDir(), "managed.md")
-	writeTestFile(t, source, "managed\n")
-	useGlobalCLICommands(t, globalCLICommands{
-		lookPath: func(name string) (string, error) {
-			if name == "openspec" {
-				return "", errors.New("not found")
-			}
-			return "/tools/" + name, nil
+func TestInjectedGlobalCLIRegistryFailures(t *testing.T) {
+	healthyCases := []struct {
+		name       string
+		descriptor globalCLIDescriptor
+		configure  func(*injectedCLIEnvironment)
+		wantDetail string
+	}{
+		{
+			name: "registry command failure", descriptor: globalCLIDescriptors[0], wantDetail: "registry offline",
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.registryOutput[codegraphRegistryPackage] = []byte("registry offline\n")
+				environment.registryErrors[codegraphRegistryPackage] = errors.New("exit 1")
+			},
 		},
-		run: func(path string, args ...string) ([]byte, error) {
-			if path == "/tools/node" {
-				return []byte("v22.0.0\n"), nil
-			}
-			return nil, nil
+		{
+			name: "malformed registry output", descriptor: openSpecGlobalCLI, wantDetail: "invalid registry latest JSON",
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.registryOutput[openSpecRegistryPackage] = []byte("not-json")
+			},
 		},
+	}
+	for _, test := range healthyCases {
+		t.Run("healthy local/"+test.name, func(t *testing.T) {
+			for _, action := range []string{"plan", "apply"} {
+				t.Run(action, func(t *testing.T) {
+					environment := newInjectedCLIEnvironment(t, "npm")
+					environment.localVersions[test.descriptor.executable] = "1.5.0"
+					environment.registrations[test.descriptor.registryPackage] = true
+					test.configure(environment)
+					target := t.TempDir()
+					useGlobalCLICommands(t, environment.commands())
+					request := installationRequestForDescriptors(t, target, false, test.descriptor)
+					var output []string
+					var err error
+					if action == "plan" {
+						output, err = PlanInstallation(request)
+					} else {
+						output, err = ApplyInstallation(request)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, want := range []string{"registry-unverified", "WARNING:", test.wantDetail} {
+						if !hasLineContaining(output, want) {
+							t.Errorf("%q missing from %s output: %v", want, action, output)
+						}
+					}
+					assertNoCleanupOrInstall(t, environment)
+				})
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name      string
+		configure func(*injectedCLIEnvironment)
+		wantState string
+	}{
+		{
+			name: "registry command failure",
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.registryErrors[openSpecRegistryPackage] = errors.New("registry offline")
+			},
+			wantState: "unavailable",
+		},
+		{
+			name: "malformed registry output",
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.registryOutput[openSpecRegistryPackage] = []byte(`{"version": "2.0.0"}`)
+			},
+			wantState: "malformed",
+		},
+	} {
+		t.Run("absent CLI/"+test.name, func(t *testing.T) {
+			for _, action := range []string{"plan", "apply"} {
+				t.Run(action, func(t *testing.T) {
+					environment := newInjectedCLIEnvironment(t, "npm")
+					environment.latestVersions[codegraphRegistryPackage] = "2.0.0"
+					test.configure(environment)
+					target := t.TempDir()
+					useGlobalCLICommands(t, environment.commands())
+					request := installationRequestForDescriptors(
+						t, target, true, globalCLIDescriptors[0], openSpecGlobalCLI,
+					)
+					var err error
+					if action == "plan" {
+						_, err = PlanInstallation(request)
+					} else {
+						_, err = ApplyInstallation(request)
+					}
+					if err == nil || !strings.Contains(err.Error(), "cannot install OpenSpec with npm") ||
+						!strings.Contains(err.Error(), test.wantState) ||
+						!strings.Contains(err.Error(), "no package changes were performed") {
+						t.Fatalf("expected guided absent-CLI registry error, got %v", err)
+					}
+					assertNoCleanupOrInstall(t, environment)
+					assertNoConfigurationWrites(t, target)
+				})
+			}
+		})
+	}
+}
+
+func TestInjectedGlobalCLIBrokenInstallations(t *testing.T) {
+	tests := []struct {
+		name       string
+		descriptor globalCLIDescriptor
+		configure  func(*injectedCLIEnvironment)
+		want       []string
+	}{
+		{
+			name: "registered package missing executable", descriptor: globalCLIDescriptors[0],
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.registrations[codegraphRegistryPackage] = true
+			},
+			want: []string{"npm registers " + codegraphRegistryPackage, "CodeGraph", "repair the npm global registration", "no package cleanup was performed"},
+		},
+		{
+			name: "version command failure", descriptor: openSpecGlobalCLI,
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.localVersions["openspec"] = "1.0.0"
+				environment.registrations[openSpecRegistryPackage] = true
+				environment.versionOutput["openspec"] = []byte("broken executable\n")
+				environment.versionErrors["openspec"] = errors.New("exit 1")
+			},
+			want: []string{"OpenSpec executable openspec", "with npm", "version command failed", "repair the OpenSpec executable", "no package cleanup was performed"},
+		},
+		{
+			name: "empty version output", descriptor: globalCLIDescriptors[0],
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.localVersions["codegraph"] = "1.0.0"
+				environment.versionOutput["codegraph"] = []byte(" \n")
+			},
+			want: []string{"CodeGraph executable codegraph", "version command returned no version", "repair the CodeGraph executable", "no package cleanup was performed"},
+		},
+		{
+			name: "malformed version output", descriptor: openSpecGlobalCLI,
+			configure: func(environment *injectedCLIEnvironment) {
+				environment.localVersions["openspec"] = "1.0.0"
+				environment.versionOutput["openspec"] = []byte("OpenSpec development build\n")
+			},
+			want: []string{"OpenSpec executable openspec", "uninterpretable output", "repair the OpenSpec executable", "no package cleanup was performed"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, action := range []string{"plan", "apply"} {
+				t.Run(action, func(t *testing.T) {
+					environment := newInjectedCLIEnvironment(t, "npm")
+					test.configure(environment)
+					target := t.TempDir()
+					useGlobalCLICommands(t, environment.commands())
+					request := installationRequestForDescriptors(t, target, true, test.descriptor)
+					var err error
+					if action == "plan" {
+						_, err = PlanInstallation(request)
+					} else {
+						_, err = ApplyInstallation(request)
+					}
+					if err == nil {
+						t.Fatal("expected guided CLI recovery error")
+					}
+					for _, want := range test.want {
+						if !strings.Contains(err.Error(), want) {
+							t.Errorf("%q missing from error: %v", want, err)
+						}
+					}
+					assertNoCleanupOrInstall(t, environment)
+					assertNoConfigurationWrites(t, target)
+				})
+			}
+		})
+	}
+}
+
+func TestInjectedGlobalCLIMultiCLIPrevalidationAndWriteBoundaries(t *testing.T) {
+	setup := func(t *testing.T) *injectedCLIEnvironment {
+		environment := newInjectedCLIEnvironment(t, "npm")
+		environment.latestVersions[codegraphRegistryPackage] = "2.0.0"
+		environment.latestVersions[openSpecRegistryPackage] = "3.0.0"
+		return environment
+	}
+
+	t.Run("success", func(t *testing.T) {
+		environment := setup(t)
+		preparations := countApplyPreparations(t)
+		target := t.TempDir()
+		useGlobalCLICommands(t, environment.commands())
+		report, err := ApplyInstallation(installationRequestForDescriptors(
+			t, target, true, globalCLIDescriptors[0], openSpecGlobalCLI,
+		))
+		if err != nil {
+			t.Fatal(err)
+		}
+		firstInstall := indexOfEventContaining(environment.events, "run /tools/npm install --global "+codegraphPackage)
+		openSpecPrevalidation := indexOfEventContaining(environment.events, "run /tools/npm view "+openSpecPackage+" version --json")
+		nodePreflight := indexOfEventContaining(environment.events, "run /tools/node --version")
+		firstInspection := indexOfEventContaining(environment.events, "run /tools/npm list --global --depth=0 --json "+codegraphRegistryPackage)
+		if nodePreflight < 0 || firstInspection <= nodePreflight || openSpecPrevalidation <= firstInspection || firstInstall <= openSpecPrevalidation {
+			t.Fatalf("Node/complete-prevalidation/install order = %v", environment.events)
+		}
+		if !reflect.DeepEqual(environment.installations, []string{codegraphPackage, openSpecPackage}) {
+			t.Fatalf("deterministic installation order = %v", environment.installations)
+		}
+		if *preparations != 2 {
+			t.Fatalf("preparation count = %d, want initial preparation plus one repreparation", *preparations)
+		}
+		if len(report) < 2 || !strings.Contains(report[0], codegraphPackage) || !strings.Contains(report[1], openSpecPackage) {
+			t.Fatalf("CLI report order = %v", report)
+		}
+		for _, path := range []string{"managed.md", "opencode.json", "AGENTS.md"} {
+			if _, err := os.Stat(filepath.Join(target, path)); err != nil {
+				t.Fatalf("configuration %s was not written after all CLI actions succeeded: %v", path, err)
+			}
+		}
 	})
 
-	_, err := ApplyInstallation(InstallationRequest{
-		Items: []catalog.Item{{
-			Name: "managed", Source: source, Dest: "managed.md", Kind: catalog.CopyFile,
-		}},
-		Extras:    map[string]bool{openSpecOptionKey: true},
-		ConfigDir: target,
+	t.Run("later installation failure", func(t *testing.T) {
+		environment := setup(t)
+		environment.installationErrs[openSpecPackage] = errors.New("exit 1")
+		preparations := countApplyPreparations(t)
+		target := t.TempDir()
+		useGlobalCLICommands(t, environment.commands())
+		report, err := ApplyInstallation(installationRequestForDescriptors(
+			t, target, true, globalCLIDescriptors[0], openSpecGlobalCLI,
+		))
+		if err == nil || !strings.Contains(err.Error(), "installing OpenSpec with npm") {
+			t.Fatalf("expected later installation failure, got %v", err)
+		}
+		firstInstall := indexOfEventContaining(environment.events, "run /tools/npm install --global "+codegraphPackage)
+		openSpecPrevalidation := indexOfEventContaining(environment.events, "run /tools/npm view "+openSpecPackage+" version --json")
+		if firstInstall <= openSpecPrevalidation {
+			t.Fatalf("installation began before complete prevalidation: %v", environment.events)
+		}
+		if !reflect.DeepEqual(environment.installations, []string{codegraphPackage, openSpecPackage}) {
+			t.Fatalf("installation attempt order = %v", environment.installations)
+		}
+		if len(report) != 1 || !strings.Contains(report[0], codegraphPackage) {
+			t.Fatalf("partial CLI report = %v", report)
+		}
+		if *preparations != 1 {
+			t.Fatalf("preparation count after CLI failure = %d, want 1", *preparations)
+		}
+		assertNoConfigurationWrites(t, target)
 	})
-	if err == nil || !strings.Contains(err.Error(), "openspec is not available on PATH") {
-		t.Fatalf("expected post-install executable error, got %v", err)
+}
+
+func TestApplyInstallationRejectsInvalidPostInstallVersionWithoutConfigurationWrites(t *testing.T) {
+	environment := newInjectedCLIEnvironment(t, "npm")
+	environment.latestVersions[codegraphRegistryPackage] = "2.0.0"
+	environment.versionOutput["codegraph"] = []byte("CodeGraph development build\n")
+	target := t.TempDir()
+	useGlobalCLICommands(t, environment.commands())
+
+	report, err := ApplyInstallation(installationRequestForDescriptors(
+		t, target, true, globalCLIDescriptors[0],
+	))
+	if err == nil || !strings.Contains(err.Error(), "uninterpretable output") {
+		t.Fatalf("expected invalid post-install version error, got report=%v err=%v", report, err)
 	}
-	if _, statErr := os.Stat(filepath.Join(target, "managed.md")); !os.IsNotExist(statErr) {
-		t.Fatalf("configuration was written after executable verification failure: %v", statErr)
+	if !reflect.DeepEqual(environment.installations, []string{codegraphPackage}) {
+		t.Fatalf("package installation did not complete before version verification: %v", environment.installations)
 	}
+	assertNoConfigurationWrites(t, target)
 }
 
 func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
@@ -481,17 +768,11 @@ func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
 	wantAgents := "# Existing rules\n"
 	writeTestFile(t, opencodePath, wantConfig)
 	writeTestFile(t, agentsPath, wantAgents)
-	var packageCommands []string
-	useGlobalCLICommands(t, globalCLICommands{
-		lookPath: func(name string) (string, error) { return "/tools/" + name, nil },
-		run: func(path string, args ...string) ([]byte, error) {
-			if path == "/tools/node" {
-				return []byte("v22.0.0\n"), nil
-			}
-			packageCommands = append(packageCommands, strings.Join(args, " "))
-			return nil, nil
-		},
-	})
+	environment := newInjectedCLIEnvironment(t, "npm")
+	environment.localVersions["openspec"] = "1.0.0"
+	environment.registrations[openSpecRegistryPackage] = true
+	environment.latestVersions[openSpecRegistryPackage] = "1.0.0"
+	useGlobalCLICommands(t, environment.commands())
 
 	if _, err := ApplyInstallation(InstallationRequest{
 		Extras:    map[string]bool{openSpecOptionKey: true},
@@ -500,9 +781,7 @@ func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(packageCommands, []string{"install --global " + openSpecPackage}) {
-		t.Fatalf("OpenSpec package commands = %v", packageCommands)
-	}
+	assertNoCleanupOrInstall(t, environment)
 	if got, err := os.ReadFile(opencodePath); err != nil || string(got) != wantConfig {
 		t.Fatalf("OpenSpec selection changed opencode.json: content=%q err=%v", got, err)
 	}

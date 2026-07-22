@@ -187,8 +187,10 @@ does, do not offer or use Direct execution: run `openspec status --change
 <name> --json`, retaining `--store <id>` for an explicit store. Continue through
 the status-driven OpenSpec workflow below only when that fresh command succeeds
 and resolves the referenced existing change. If the target is missing, stale,
-or otherwise unresolvable, report that target and stop for user direction. Do
-not offer or infer Direct execution as a fallback.
+or otherwise unresolvable, retain and report the target-resolution command,
+exit code, and diagnostic, then apply the shared mandatory-stop policy. Do not
+offer or infer Direct execution as a fallback or select substitute work before
+the user chooses an action.
 
 Give a risk-based recommendation from the confirmed Brief:
 
@@ -272,8 +274,22 @@ A mandatory stop applies when any of these is true:
   command's relevant scope; or
 - a TDD or expected failure remains red at batch end.
 
-On a mandatory stop, surface the evidence and do not retry, dispatch a fallback
-worker, continue implementation, or advance to the route's next phase.
+On every mandatory stop, apply this shared mandatory-stop policy in two ordered,
+separate steps:
+
+1. First report the blocking status and all retained evidence needed to choose
+   an action, including the failed command and exit code, verification evidence,
+   worker status, deviation, out-of-scope work, or state conflict when
+   applicable. Do not ask the stop question before this report.
+2. Then ask exactly one blocker-specific next-action `question`. Derive its
+   choices from the reported blocker, always include a safe stop option, and
+   keep the question tool's custom response available.
+
+Until the user selects an action, do not retry, continue, broaden scope, select
+substitute work, advance to the route's next phase, or dispatch any worker. Do
+not infer authorization from the blocker itself. A user-selected action may
+authorize a new bounded step; if a custom response cannot be mapped safely to
+an action, ask for clarification instead of acting.
 
 ### Safe direct execution
 
@@ -286,11 +302,11 @@ separate verifier. Treat Safe as clean only when all of these are true:
 - the result is clean under the shared implementation-result policy.
 
 If executable verification is unavailable or its command/exit-code evidence is
-omitted, report the result as not verified and stop without retrying,
-dispatching a fallback worker, opening reviews, or continuing implementation.
-Unavailable verification must be reported as `partial` or `blocked`. Apply the
-shared mandatory-stop policy to every other unsafe result. Only after a clean
-Safe result proceed to the direct Safe review gate.
+omitted, retain the result and report it as not verified with status `partial`
+or `blocked`, then apply the shared mandatory-stop policy. Apply that policy to
+every other unsafe result as well. Only after a clean Safe result proceed to the
+direct Safe review gate; before the user selects an action at a stop, do not
+retry, dispatch a fallback worker, open reviews, or continue implementation.
 
 ### Fast direct execution
 
@@ -298,7 +314,10 @@ The `general` worker implements only the bounded Brief. It MUST NOT run tests or
 reviews. When it reports `done`, use this explicit conclusion: Report the result
 explicitly as implemented but not verified and do not open the direct review
 gate. If it reports another status or any deviation, preserve those facts in the
-result instead of claiming the bounded Brief was implemented.
+result instead of claiming the bounded Brief was implemented, report the
+retained result and command evidence, and then apply the shared mandatory-stop
+policy. Do not retry, broaden the Direct scope, open reviews, or dispatch
+another worker before the user selects an action.
 
 ### Direct review gate
 
@@ -320,8 +339,10 @@ commands and return their executable command/exit-code evidence. Treat the fix
 as clean only when that verification was available and run, its evidence was
 reported, and the result is clean under the shared implementation-result
 policy. Unavailable or omitted verification means the fix is not verified:
-report and stop without retrying or rerunning a reviewer. Apply the shared
-mandatory-stop policy to every other unsafe fix result.
+retain the fix result and command evidence, report it as `partial` or `blocked`,
+and then apply the shared mandatory-stop policy. Apply that policy to every
+other unsafe fix result. Do not retry, broaden the selected finding set, rerun a
+reviewer, or dispatch another worker before the user selects an action.
 
 After a clean fix, ask whether the user wants confirmation. If so, rerun only reviewers responsible for the addressed selected findings; do not rerun a reviewer whose findings were not selected and addressed.
 
@@ -349,7 +370,7 @@ Core principle: does this inflate my context without need? If yes, delegate.
 Enter this workflow boundary only after the user selects OpenSpec for new work,
 or after fresh successful status resolution of a referenced existing change.
 The OpenSpec branch preserves the bootstrap gate, official planner and artifact
-lifecycle, bounded implementation cadence, verification policy, review gate and
+lifecycle, bounded automatic implementation, verification policy, review gate and
 review-fix routing, and archive path below.
 
 The source of truth for change state is the CLI, never conversational inference:
@@ -378,8 +399,10 @@ If the exact context key is already in the successful set, skip bootstrap. A
 different project root or store is a different context and MUST be bootstrapped.
 Otherwise dispatch one short `general` task with the prompt below and wait for
 it to succeed. Add the returned context key to the set only after success. If
-bootstrap blocks or fails, do not launch the OpenSpec worker; surface its
-diagnostic to the user. Only then dispatch the requested OpenSpec worker.
+bootstrap blocks or fails, do not launch the OpenSpec worker; retain and report
+its status, diagnostic, commands, and exit codes, then apply the shared
+mandatory-stop policy. Only after a successful bootstrap may the requested
+OpenSpec worker be dispatched.
 
 Pass this bounded prompt to `general`, substituting the working directory and
 optional store id but adding no unrelated work:
@@ -430,7 +453,8 @@ Invoke the official skill <skill-name> for change <change-name>.
 Brief: <confirmed interview brief — planner only>
 Constraints: <scope limits; for the implementer, the exact task batch>
 Return: status (done|blocked|partial), files touched, commands run with exit
-codes, and the next recommended action. Compact — no artifact contents.
+codes, deviations or out-of-plan work, and the next recommended action. Compact
+— no artifact contents.
 ```
 
 Launch exactly one worker per distinct action; never relaunch the same action
@@ -439,14 +463,14 @@ blocker to the user instead of improvising around it.
 
 ### Planned-task implementation state
 
-The cadence rules in this section apply only while implementing planned tasks
+The automatic execution rules in this section apply only while implementing planned tasks
 selected from the active change's resolved `tasks.md`. They do not apply to a
 post-verification review-fix batch identified by finding IDs; that batch keeps
 the routing defined by the Review gate below.
 
 **Fresh-state invariant:** At every planned-task decision point—before the
-initial tree and cadence question, before each implementer dispatch, and after
-each clean result—resolve the active change from OpenSpec again. In the active
+initial tree, before each implementer dispatch, and after each clean
+result—resolve the active change from OpenSpec again. In the active
 local context run `openspec status --change <name> --json`, retaining `--store
 <id>` for an explicit store. Require status to report the tasks artifact complete,
 read the resolved current `tasks.md`, and recompute the complete tree and next
@@ -457,8 +481,8 @@ Every instruction below to refresh or use fresh state means applying this
 invariant in full.
 
 **Tree rule:** From the fresh state, render the complete hierarchy before
-planned-task implementation begins and whenever control returns at a cadence
-boundary. Keep it compact, but omit nothing:
+planned-task implementation begins and at every mandatory implementation stop.
+Keep it compact, but omit nothing:
 
 ```text
 Implementation progress (<completed>/<total>)
@@ -474,78 +498,85 @@ task MUST appear with its identifier, a short summary, and exactly `✓` for a
 checked task or `☐` for a pending task. Derive all counts and markers from the
 fresh file, not from worker claims.
 
-### Planned-task cadence and bounded batches
+### Automatic planned-task loop and bounded batches
 
-**Cadence rule:** When pending tasks exist, ask exactly once per planned-task
-implementation cycle, with one single-select `question`, which cadence to use:
-
-- **After each task** — pause after each completed task.
-- **After each section** — pause after each completed section.
-- **Run all remaining tasks** — continue through all remaining sections.
-
-Keep the selection only for this cycle. Do not persist it or ask the cadence
-question again during the cycle. In task or section cadence, after a clean
-batch, apply the fresh-state invariant, display the complete compact tree,
-return control, and wait for explicit continuation under the same selection.
-In run-all cadence, do not ask continuation questions: apply the invariant and
-chain the next bounded section batch automatically while results stay clean.
-
-**Batch rule:** Select every planned-task batch from the recomputed fresh state:
-
-- Task cadence: dispatch exactly the next pending task.
-- Section cadence: dispatch exactly the pending tasks in the next incomplete
-  named section.
-- Run-all cadence: dispatch exactly the pending tasks in the next incomplete
-  named section, then refresh and repeat one section at a time. Never issue an
-  unbounded "finish all tasks" prompt.
+**Automatic execution rule:** When pending tasks exist, do not ask a cadence or
+between-section continuation question. Apply the fresh-state invariant, select
+exactly the pending tasks in the next incomplete named section, and dispatch
+that one section as the bounded batch. After every clean result, apply the
+fresh-state invariant and automatically repeat for the next incomplete section
+until no pending tasks remain or a mandatory stop occurs. Do not display the
+tree, return control, or otherwise pause between clean section batches. Never
+issue an unbounded "finish all tasks" prompt.
 
 Every planned-task implementer prompt MUST name the section, list the exact task
 identifiers and short summaries in the batch, require implementation of only
-that batch, and require only those completed task checkboxes to be marked. Its
-result contract MUST preserve every command in execution order with its exit
-code and, for each non-zero command, identify the later equivalent-or-broader
-relevant successful rerun when one exists. If the fresh state shows an intended
-task or section is already complete, do not dispatch stale work; use the
-recomputed next batch.
+that batch, and require only those completed task checkboxes to be marked. It
+MUST require focused textual checks relevant to the instruction changes in that
+batch and explicitly prohibit the repository's mandatory tests and build during
+planned-task implementation; those commands are reserved for final OpenSpec
+verification. Its result contract MUST preserve every command in execution
+order with its exit code, identify the later equivalent-or-broader relevant
+successful rerun for each non-zero command when one exists, and report every
+deviation or out-of-scope change. If the fresh state shows an intended task or
+section is already complete, do not dispatch stale work; use the recomputed next
+batch.
 
 ### Implementation stops and completion routing
 
 After every planned-task implementer result, apply the shared
-implementation-result policy before applying the selected cadence. On a shared mandatory stop,
-stop the cycle immediately and dispatch no further batch.
+implementation-result policy. On a shared
+mandatory stop, dispatch no further batch. Apply the fresh-state invariant and
+render the complete compact tree when current state is resolvable; never render
+cached state. Then apply the shared mandatory-stop policy, reporting the worker
+and command evidence or state conflict before asking its one next-action
+question. If current OpenSpec task state cannot be resolved safely, include the
+state-resolution evidence and report that the complete tree is unavailable
+before asking the question.
+
+Focused textual-check commands are commands under the shared result policy:
+preserve every exit code and stop on any uncorrected failure, non-clean worker
+status, deviation, or out-of-scope work. Deferring mandatory repository tests
+and build is required planned-task behavior, not missing implementation
+verification.
 
 Only after a clean result, including a fully evidenced corrected intermediate
-failure, apply the fresh-state invariant and continue or pause under the already
-selected cadence. Stop when that fresh state conflicts with the requested batch
-or the worker's completion report.
+failure, apply the fresh-state invariant and continue automatically. Stop when
+that fresh state conflicts with the requested batch or the worker's completion
+report.
 
 Surface the worker evidence, failed command and exit code, or state conflict to
-the user. Do not invent substitute tasks, broaden the batch, retry around the
-stop, or continue run-all chaining. A stale intended batch found complete
-before dispatch is only skipped as described above; an unexpected conflict
-during or after a dispatch is a mandatory stop. A clean `done` result does not
-prove overall completion; only the fresh-state invariant does.
+the user through the shared mandatory-stop policy. Do not invent substitute
+tasks, broaden the batch, retry around the stop, or continue automatic chaining
+before the user selects an action. A stale intended batch found complete before
+dispatch is only skipped as described above; an unexpected conflict during or
+after a dispatch is a mandatory stop. A clean `done` result does not prove
+overall completion; only the fresh-state invariant does.
 
 **Completion rule:** Whenever the fresh-state invariant shows no pending tasks,
-do not ask for cadence or continuation. Automatically dispatch
+do not ask for continuation. Automatically dispatch
 `openspec-verifier` for the active change, subject to the same bootstrap gate.
 Verification requires the executed evidence defined below. If verification
-fails, blocks, or is incomplete, stop and report the result before any review or
-archive action. If verification succeeds, proceed directly to the existing
-Review gate below without changing its review choices, selection behavior, or
-fix routing.
+fails, blocks, or is incomplete, retain its status, commands, exit codes, and
+diagnostic, then apply the shared mandatory-stop policy before any retry,
+review, archive action, or worker dispatch. If verification succeeds, proceed
+directly to the existing Review gate below without changing its review choices,
+selection behavior, or fix routing.
 
 ### Between phases
 
-Outside the implementation cadence above, summarize the worker's result in 2–4
-lines and ask (question tool) whether to continue, adjust, or stop. The selected
-implementation cadence alone controls pauses between implementation batches.
+Outside the automatic planned-task loop above, summarize the worker's result in
+2–4 lines and ask (question tool) whether to continue, adjust, or stop. Clean
+planned-task section batches chain without returning control.
 
 ## Verification policy
 
 "Verified" requires executed evidence: the verifier must have run the project's
 tests/build and reported commands with exit codes. Artifact reading alone is
 "reviewed, not verified" — always say which of the two you have.
+For planned OpenSpec work, the verifier runs the mandatory repository tests and
+build only after fresh task state shows all planned tasks complete; planned-task
+implementers run only their required focused textual checks.
 
 ## Review gate (after verification, before archive)
 
@@ -561,8 +592,8 @@ findings; keep the strongest phrasing). Present the list and ask the user
 
 **Review-fix routing:** Only findings the user selects become a task: delegate
 them to `openspec-implementer` as one bounded batch ("fix findings #2 and #5:
-<text>"). This finding-ID batch is outside the planned-task cadence: do not
-require `tasks.md` task/section identifiers, reopen cadence, or dispatch
+<text>"). This finding-ID batch is outside the automatic planned-task loop: do
+not require `tasks.md` task/section identifiers or dispatch
 verification again merely because it uses `openspec-implementer`. Never
 delegate a fix for an unselected or SUGGESTION-only finding on your own
 initiative. After fixes land, re-run only the reviewers whose findings were

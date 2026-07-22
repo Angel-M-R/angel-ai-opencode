@@ -19,6 +19,22 @@ const codegraphGuidance = `<!-- codegraph-guidance -->
 Use CodeGraph before broad filesystem searches.
 <!-- /codegraph-guidance -->`
 
+const fakeInstalledCodegraph = "#!/bin/sh\nprintf '1.0.0\\n'\n"
+
+const fakeNPMWithRegisteredCodegraph = `#!/bin/sh
+case "$1" in
+list)
+	printf '{"dependencies":{"@colbymchenry/codegraph":{"version":"1.0.0"}}}\n'
+	;;
+view)
+	printf '"1.0.0"\n'
+	;;
+*)
+	exit 1
+	;;
+esac
+`
+
 func codegraphAssets(t *testing.T) string {
 	t.Helper()
 	assets := t.TempDir()
@@ -93,8 +109,8 @@ func TestInstallationConfiguresSelectedCodegraphIdempotently(t *testing.T) {
 	assets := codegraphAssets(t)
 	target := t.TempDir()
 	binDir := t.TempDir()
-	writeExecutable(t, filepath.Join(binDir, "codegraph"), "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "npm"), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, "codegraph"), fakeInstalledCodegraph)
+	writeExecutable(t, filepath.Join(binDir, "npm"), fakeNPMWithRegisteredCodegraph)
 	t.Setenv("PATH", binDir)
 
 	opencodePath := filepath.Join(target, "opencode.json")
@@ -154,12 +170,27 @@ func TestInstallationInstallsCodegraphWhenMissing(t *testing.T) {
 	binDir := t.TempDir()
 	commandLog := filepath.Join(t.TempDir(), "npm-args")
 	writeExecutable(t, filepath.Join(binDir, "npm"), `#!/bin/sh
-printf '%s\n' "$@" > "$COMMAND_LOG"
-printf '# Concurrent rules\n' > "$RACE_TARGET"
-printf '{"unrelated":true}\n' > "$RACE_CONFIG_TARGET"
-printf '#!/bin/sh\nexit 0\n' > "$FAKE_BIN/codegraph"
-/bin/chmod +x "$FAKE_BIN/codegraph"
-`)
+	case "$1" in
+	list)
+		printf '{"dependencies":{}}\n'
+		exit 0
+		;;
+	view)
+		printf '"1.0.0"\n'
+		exit 0
+		;;
+	install)
+	printf '%s\n' "$@" > "$COMMAND_LOG"
+	printf '# Concurrent rules\n' > "$RACE_TARGET"
+	printf '{"unrelated":true}\n' > "$RACE_CONFIG_TARGET"
+	printf '#!/bin/sh\nprintf "1.0.0\\n"\n' > "$FAKE_BIN/codegraph"
+	/bin/chmod +x "$FAKE_BIN/codegraph"
+		;;
+	*)
+		exit 1
+		;;
+	esac
+	`)
 	t.Setenv("PATH", binDir)
 	t.Setenv("COMMAND_LOG", commandLog)
 	t.Setenv("FAKE_BIN", binDir)
@@ -250,8 +281,8 @@ func TestInstallationComposesGlobalAgentsAndCodegraphIdempotently(t *testing.T) 
 	write(t, agentsPath, "# User rules that will be replaced\n")
 	write(t, opencodePath, `{"mcp":{"context7":{"type":"remote"},"codegraph":{"command":["custom"],"enabled":false}}}`)
 	binDir := t.TempDir()
-	writeExecutable(t, filepath.Join(binDir, "codegraph"), "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "npm"), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, "codegraph"), fakeInstalledCodegraph)
+	writeExecutable(t, filepath.Join(binDir, "npm"), fakeNPMWithRegisteredCodegraph)
 	t.Setenv("PATH", binDir)
 
 	request := install.InstallationRequest{
