@@ -41,19 +41,19 @@ go run . --target /ruta   # instalar en otro directorio (para probar)
 ## Qué edita
 
 Todo el contenido vive en `assets/` y se edita a mano — el código Go no hay
-que tocarlo para cambiar contenido:
+que tocarlo para cambiar contenido. Esto es lo que se escribe en la máquina
+destino, agrupado por dónde acaba:
 
-| Carpeta | Qué es | Se instala en |
-|---|---|---|
-| `assets/agents/*.md` | Un agente por archivo: frontmatter YAML + system prompt como cuerpo | `~/.config/opencode/agents/` |
-| `assets/commands/*.md` | Comandos slash | `~/.config/opencode/commands/` |
-| `assets/skills/<nombre>/` | Archivos de cada skill; conserva archivos extra del destino | `~/.config/opencode/skills/` |
-| `assets/plugins/*` | Plugins JS/TS | `~/.config/opencode/plugins/` |
-| `assets/themes/*.json` | Temas | `~/.config/opencode/themes/` |
-| `assets/agents-md/AGENTS.md` | Reglas globales de comportamiento | `~/.config/opencode/AGENTS.md` |
-| `assets/fragments/*.json` | Trozos de `opencode.json` (MCP, permisos, ajustes) que se mergean sobre el existente | `~/.config/opencode/opencode.json` |
-| `assets/integrations/codegraph/*` | Configuración MCP y reglas que solo se aplican cuando se selecciona CodeGraph | `opencode.json` y `AGENTS.md` |
-| `assets/tui-plugins/*` | Plugins de la TUI de opencode (logo, etc.) | vía los 3 toggles del paso final del wizard, no escaneo directo |
+| Se instala en | Qué es |
+|---|---|
+| `~/.config/opencode/agents/` | Agentes (un archivo por agente: frontmatter YAML + system prompt) |
+| `~/.config/opencode/commands/` | Comandos slash |
+| `~/.config/opencode/skills/` | Skills (conserva archivos extra del destino) |
+| `~/.config/opencode/plugins/` | Plugins JS/TS |
+| `~/.config/opencode/themes/` | Temas |
+| `~/.config/opencode/tui-plugins/` | Plugins de la TUI (logo, etc.), activados vía los 3 toggles del paso final del wizard |
+| `~/.config/opencode/AGENTS.md` | Reglas globales de comportamiento (+ reglas de CodeGraph si se selecciona) |
+| `~/.config/opencode/opencode.json` | MCP, permisos y ajustes que se mergean sobre el existente (+ config de CodeGraph si se selecciona) |
 
 
 ## Prerequisitos en la máquina destino
