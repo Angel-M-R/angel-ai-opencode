@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">gstack</title>
+  <rect width="160" height="160" rx="22" fill="#101410"/>
+  <rect x="10" y="10" width="140" height="140" rx="16" fill="none" stroke="#8ae234" stroke-width="4"/>
+  <text x="80" y="91" fill="#f4f7f2" font-family="Arial, sans-serif" font-size="34" font-weight="700" text-anchor="middle">gstack</text>
+</svg>

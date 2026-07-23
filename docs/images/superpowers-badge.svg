@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">Superpowers</title>
+  <rect width="160" height="160" rx="22" fill="#17213a"/>
+  <path d="M88 18 45 87h30l-8 55 48-76H84z" fill="#ffd84d"/>
+  <text x="80" y="150" fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle">SP</text>
+</svg>
