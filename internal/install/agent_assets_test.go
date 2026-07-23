@@ -67,13 +67,16 @@ func orchestratorBootstrapSection(t *testing.T) string {
 func TestOrchestratorExecutionRouteOrderingContract(t *testing.T) {
 	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
 	requireTextInOrder(t, orchestrator,
-		"Present the Brief with the combined new-work choice and route it through the selected execution path.",
+		"Present the Brief, then immediately invoke the one route-selection question",
 		"The interview ends with a draft Brief",
+		"present the completed Brief, then immediately invoke exactly one single-select route-selection `question`",
 		"do not ask a separate confirmation question.",
 		"Keep the Brief route-neutral.",
 		"## Execution route selection",
-		"Present the Brief and ask the combined question below",
-		"Selecting **Direct Safe**, **Direct Fast**, or **OpenSpec** implicitly confirms the presented Brief",
+		"Immediately after presenting it, invoke exactly one single-select route-selection `question`.",
+		"The orchestrator owns that question's payload and option order; do not delegate its construction.",
+		"Do not ask a separate Brief confirmation, route, or Direct mode question.",
+		"Selecting a valid offered **Direct Safe**, **Direct Fast**, or **OpenSpec** route implicitly confirms the presented Brief",
 		"**OpenSpec branch boundary:** Only after OpenSpec is selected",
 		"**Direct branch boundary:** Only after **Direct Safe** or **Direct Fast** is selected",
 		"## OpenSpec workflow",
@@ -81,9 +84,10 @@ func TestOrchestratorExecutionRouteOrderingContract(t *testing.T) {
 
 	section := orchestratorSection(t, "## Execution route selection", "## OpenSpec workflow")
 	requireTextInOrder(t, section,
-		"do not ask a separate Brief confirmation, route, or Direct mode question.",
+		"Do not ask a separate Brief confirmation, route, or Direct mode question.",
 		"Do not run OpenSpec bootstrap, invoke the OpenSpec CLI, dispatch an OpenSpec worker, or create an OpenSpec change or artifact before this choice.",
-		"For new work, give a risk-based recommendation from the Brief and order the single-select `question` choices accordingly:",
+		"For new work, determine first whether the Brief requires executable validation:",
+		"construct the orchestrator-owned single-select `question` payload in this order, keeping its custom response available:",
 	)
 }
 
@@ -94,17 +98,24 @@ func TestOrchestratorDirectRoutingContract(t *testing.T) {
 		requireTextInOrder(t, section,
 			"For a clear, isolated, reversible change, order the choices **Direct Safe (Recommended)** / **Direct Fast** / **OpenSpec** / **Modify Brief**.",
 			"For architecture, security, data, migrations, cross-cutting scope, or material uncertainty, order the choices **OpenSpec (Recommended)** / **Direct Safe** / **Direct Fast** / **Modify Brief**.",
-			"The recommendation is non-binding: accept any of the three execution routes, and treat the user's selection as authoritative.",
+			"The recommendation is non-binding: accept any valid offered execution route and treat the user's selection as authoritative.",
 			"Never recommend **Direct Fast** by default.",
-			"Keep the `question` tool's custom response available.",
 		)
 	})
 
 	t.Run("combined choice confirms or reopens the brief", func(t *testing.T) {
 		requireTextInOrder(t, section,
-			"Selecting **Direct Safe**, **Direct Fast**, or **OpenSpec** implicitly confirms the presented Brief; do not ask for separate confirmation.",
+			"Selecting a valid offered **Direct Safe**, **Direct Fast**, or **OpenSpec** route implicitly confirms the presented Brief; do not ask for separate confirmation.",
 			"Selecting **Modify Brief** does not confirm it",
-			"reopen the interview, update the Brief from the user's answers, reassess risk, and present this same combined choice again.",
+			"reopen the interview, update the Brief from the user's answers, reassess risk and executable-validation requirements, present the updated Brief, and reissue the route-selection question.",
+		)
+	})
+
+	t.Run("validation required excludes and rejects Direct Fast", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"When the Brief requires executable validation, **Direct Fast** is incompatible.",
+			"Omit it from the payload while preserving the applicable risk-based ordering among **Direct Safe**, **OpenSpec**, and **Modify Brief**.",
+			"If the user requests **Direct Fast** through a custom response in this state, reject it without confirming the Brief and reissue the same route-selection `question` with **Direct Fast** omitted.",
 		)
 	})
 
@@ -197,13 +208,18 @@ func TestOrchestratorCorrectedIntermediateFailureContract(t *testing.T) {
 		"This shared strict policy is the default for every implementation result and every OpenSpec control point that invokes it.",
 		"The sole route-specific classification exception is inside the automatic planned-task loop",
 		"Any result that is not explicitly eligible for that exception remains subject to this strict default.",
-		"An intermediate non-zero command is corrected only when",
-		"the same worker identifies the failure",
-		"later runs an equivalent or broader relevant command with exit code zero",
+		"An intermediate non-zero command caused by command syntax or invocation is a corrected tooling error, rather than a mandatory stop, only when",
+		"the same worker identifies that cause",
+		"later runs an equivalent-or-broader relevant command with exit code zero",
 		"final status `done`",
 		"no deviation or out-of-scope work",
-		"The successful command MUST validate the failed command's relevant scope or a superset of it.",
-		"Retain and surface the failed command, its exit code, and the successful rerun",
+		"The successful command MUST cover the failed command's relevant scope or a superset of it.",
+		"Retain and surface the original failed command and its exit code together with the later successful command and its exit code",
+		"A real verification or implementation failure remains a mandatory stop and is not a corrected tooling error.",
+		"another worker performs the rerun",
+		"the final status is not `done`",
+		"the rerun is unrelated or narrower",
+		"the final relevant verification state is red.",
 	)
 
 	t.Run("route-specific sections reference the shared policy", func(t *testing.T) {

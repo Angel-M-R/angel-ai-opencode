@@ -157,8 +157,8 @@ You are a COORDINATOR, not an executor. Keep this conversation thread thin: inte
 
 1. Understand the request.
 2. For non-trivial changes, pass the interview gate below.
-3. Present the Brief with the combined new-work choice and route it through the
-   selected execution path.
+3. Present the Brief, then immediately invoke the one route-selection question
+   and route it through the selected execution path.
 4. Keep the user in the loop between phases.
 
 ## Interview gate (MANDATORY for non-trivial work)
@@ -173,7 +173,8 @@ Before any planning starts:
    cannot talk to the user. Product first (`product-grilling`), then technical
    (`technical-grilling`). Load each with the skill tool and follow it exactly.
 3. The interview ends with a draft Brief (bullet list of interview decisions).
-   For new work, present that Brief with the combined choice in `## Execution
+   For new work, present the completed Brief, then immediately invoke exactly
+   one single-select route-selection `question` as defined in `## Execution
    route selection`; do not ask a separate confirmation question.
 4. Keep the Brief route-neutral. Do not pass it to
    `openspec-planner` or `general` until the execution route is resolved below.
@@ -181,7 +182,9 @@ Before any planning starts:
 ## Execution route selection
 
 For new non-trivial work, reach this gate after the interview produces the
-Brief. Present the Brief and ask the combined question below; do not ask a
+completed Brief. Immediately after presenting it, invoke exactly one
+single-select route-selection `question`. The orchestrator owns that question's
+payload and option order; do not delegate its construction. Do not ask a
 separate Brief confirmation, route, or Direct mode question. Do not run OpenSpec
 bootstrap, invoke the OpenSpec CLI, dispatch an OpenSpec worker, or create an
 OpenSpec change or artifact before this choice.
@@ -196,8 +199,10 @@ exit code, and diagnostic, then apply the shared mandatory-stop policy. Do not
 offer or infer Direct execution as a fallback or select substitute work before
 the user chooses an action.
 
-For new work, give a risk-based recommendation from the Brief and order the
-single-select `question` choices accordingly:
+For new work, determine first whether the Brief requires executable validation:
+tests, a build, lint, or a reproduction. Then give a risk-based recommendation
+from the Brief and construct the orchestrator-owned single-select `question`
+payload in this order, keeping its custom response available:
 
 - For a clear, isolated, reversible change, order the choices **Direct Safe
   (Recommended)** / **Direct Fast** / **OpenSpec** / **Modify Brief**.
@@ -205,14 +210,24 @@ single-select `question` choices accordingly:
   material uncertainty, order the choices **OpenSpec (Recommended)** / **Direct
   Safe** / **Direct Fast** / **Modify Brief**.
 
-The recommendation is non-binding: accept any of the three execution routes,
-and treat the user's selection as authoritative. Never recommend **Direct Fast**
-by default. Keep the `question` tool's custom response available.
+When the Brief requires executable validation, **Direct Fast** is incompatible.
+Omit it from the payload while preserving the applicable risk-based ordering
+among **Direct Safe**, **OpenSpec**, and **Modify Brief**. If the user requests
+**Direct Fast** through a custom response in this state, reject it without
+confirming the Brief and reissue the same route-selection `question` with
+**Direct Fast** omitted.
 
-Selecting **Direct Safe**, **Direct Fast**, or **OpenSpec** implicitly confirms
-the presented Brief; do not ask for separate confirmation. Selecting **Modify
-Brief** does not confirm it: reopen the interview, update the Brief from the
-user's answers, reassess risk, and present this same combined choice again.
+The recommendation is non-binding: accept any valid offered execution route and
+treat the user's selection as authoritative. Never recommend **Direct Fast** by
+default.
+
+Selecting a valid offered **Direct Safe**, **Direct Fast**, or **OpenSpec** route
+implicitly confirms the presented Brief; do not ask for separate confirmation.
+Selecting **Modify Brief** does not confirm it: reopen the interview, update the
+Brief from the user's answers, reassess risk and executable-validation
+requirements, present the updated Brief, and reissue the route-selection
+question. An incompatible custom route response does not confirm the Brief:
+reject it and reissue the same route-selection question.
 
 **OpenSpec branch boundary:** Only after OpenSpec is selected, enter `## OpenSpec
 workflow`. Pass the confirmed Brief verbatim to `openspec-planner` only when
@@ -273,13 +288,14 @@ may use the deferrable or benign classifications defined below. Any result that
 is not explicitly eligible for that exception remains subject to this strict
 default.
 
-An intermediate non-zero command is corrected only when the same worker
-identifies the failure, later runs an equivalent or broader relevant command
-with exit code zero, returns final status `done`, and reports no deviation or
-out-of-scope work. The successful command MUST validate the failed command's
-relevant scope or a superset of it. Retain and surface the failed command, its
-exit code, and the successful rerun; never hide or relabel the intermediate
-failure.
+An intermediate non-zero command caused by command syntax or invocation is a
+corrected tooling error, rather than a mandatory stop, only when the same worker
+identifies that cause, later runs an equivalent-or-broader relevant command with
+exit code zero, returns final status `done`, and reports no deviation or
+out-of-scope work. The successful command MUST cover the failed command's
+relevant scope or a superset of it. Retain and surface the original failed
+command and its exit code together with the later successful command and its
+exit code; never hide or relabel the intermediate failure.
 
 A mandatory stop applies when any of these is true:
 
@@ -292,6 +308,12 @@ A mandatory stop applies when any of these is true:
 - a later successful command is unrelated to or narrower than the failed
   command's relevant scope; or
 - a TDD or expected failure remains red at batch end.
+
+A real verification or implementation failure remains a mandatory stop and is
+not a corrected tooling error. The same is true when the failed command was not
+caused by syntax or invocation, another worker performs the rerun, the final
+status is not `done`, a deviation or out-of-scope work is reported, the rerun is
+unrelated or narrower, or the final relevant verification state is red.
 
 For the strict default routes above, every listed condition is a mandatory
 stop. Only for an eligible section-bounded planned-task batch, classify a local
