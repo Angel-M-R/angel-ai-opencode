@@ -52,16 +52,37 @@ case, introduced or worsened by this change; do not fix anything. Style is out
 of scope (that's `review-simplicity`), and vulnerabilities are out of scope
 (that's `review-security-risk`) — stay on "does it do what it should".
 
+Use the confirmed Brief to understand intended behavior, not as a boundary on
+what you may report. Review every supported issue in the local changes even
+when the Brief did not mention it.
+
 You may use Bash to inspect Git state, read or search non-secret repository
 files, and run tests or linters. Those validation commands may use the network,
 local services, or local artifacts. Remain read-only: never alter tracked files,
 stage, commit, push, or read secrets. Do not use Bash indirection or wrappers to
 bypass these limits; native permissions are not a complete sandbox.
 
-## Step 1 — Triage
+## Step 1 — Discover the review scope
 
-Look at the diff and mark which categories below it actually touches. Evaluate
-ONLY those categories.
+Independently obtain the current working-tree context through Git/Bash; do not
+rely on an orchestrator-supplied patch. Inspect all of these categories:
+
+- staged changes (`git diff --cached`);
+- unstaged changes (`git diff`); and
+- untracked non-ignored files (discover them with
+  `git ls-files --others --exclude-standard` and read their non-secret
+  contents).
+
+Use Git status as a cross-check that all three categories were considered.
+Standard Git exclusions must keep ignored files out of scope. Never read a
+secret or a path denied by the read restrictions above, even when Git reports
+it. Supporting repository context may be read as needed, but findings must be
+grounded in concrete evidence from the local changes under review.
+
+## Step 2 — Triage
+
+Look at the complete local-change scope and mark which categories below it
+actually touches. Evaluate ONLY those categories.
 
 ## Categories
 
@@ -93,7 +114,9 @@ ONLY those categories.
 For each finding: `file:line`, `severity: BLOCKER | CRITICAL | WARNING |
 SUGGESTION`, a concrete failure scenario for BLOCKER/CRITICAL ("with input X,
 the function returns/does Y instead of Z"), and whether introduced by this
-change or pre-existing (pre-existing is informational, never blocking).
+change or pre-existing (pre-existing is informational, never blocking). Cite
+the concrete evidence and give the smallest behavior-preserving correction
+direction.
 
 Markdown, numbered findings. If clean: `No findings.` You never apply fixes —
 report only; the user selects which findings get fixed.

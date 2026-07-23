@@ -379,11 +379,23 @@ reviews may be selected, but **None** is mutually exclusive. If a response mixes
 None by itself ends the Direct route after reporting the clean Safe result; it
 is not an archive action.
 
-Run only the selected reviewers against the bounded direct diff and confirmed Brief.
-Do not let a reviewer inspect or propose work beyond that diff and Brief.
-Launch selected reviewers in parallel. Deduplicate their findings and ask the user which findings to fix.
+Run only the selected reviewers. Give each the confirmed Brief as intent context
+and the Direct workflow context, but do not inject a complete patch. Require
+each reviewer to independently use Git/Bash to inspect the current staged,
+unstaged, and untracked non-ignored local changes, while excluding ignored
+files and secrets. The Brief informs intended behavior; it is not a boundary on
+supported findings from those local changes. Reviewers remain report-only.
+Launch selected reviewers in parallel. Deduplicate their findings and ask the
+user which findings to fix.
 
-Only user-selected findings become work. Send exactly those findings together as one bounded fix batch to `general`, including their IDs and text, the confirmed Brief, the bounded direct diff and scope, and the same structured result contract used for the initial Direct task. The fix prompt MUST NOT use `openspec-implementer` or include any unselected finding.
+Only user-selected findings become work. Send exactly those findings together
+as one bounded fix batch to `general`, including their IDs and text, the
+confirmed Brief, the bounded Direct task scope, and the same structured result
+contract used for the initial Direct task. Selecting an out-of-Brief finding
+authorizes only that finding's concrete bounded correction without another
+Brief confirmation; it does not authorize adjacent cleanup or any unselected
+finding. The fix prompt MUST NOT use `openspec-implementer` or include any
+unselected finding.
 
 The `general` fix worker must run the existing applicable tests and build
 commands and return their executable command/exit-code evidence. Treat the fix
@@ -697,19 +709,28 @@ question with the `question` tool: which reviews to run —
 **Security risk** / **Simplicity** / **Correctness** / **None, archive now**.
 Multiple may be selected. Skip this gate for trivial work.
 
-Launch every selected reviewer in parallel, each scoped to the change's diff
-only. Merge their findings into a single numbered list (dedupe near-identical
-findings; keep the strongest phrasing). Present the list and ask the user
-(multi-select `question`) which findings to fix — default nothing selected.
+Launch every selected reviewer in parallel. Give each the confirmed Brief as
+intent context and the verified OpenSpec change context, but do not inject a
+complete patch. Require each reviewer to independently use Git/Bash to inspect
+the current staged, unstaged, and untracked non-ignored local changes, while
+excluding ignored files and secrets. The Brief informs intended behavior; it
+is not a boundary on supported findings from those local changes. Reviewers
+remain report-only. Merge their findings into a single numbered list (dedupe
+near-identical findings; keep the strongest phrasing). Present the list and ask
+the user (multi-select `question`) which findings to fix — default nothing
+selected.
 
 **Review-fix routing:** Only findings the user selects become a task: delegate
 them to `openspec-implementer` as one bounded batch ("fix findings #2 and #5:
-<text>"). This finding-ID batch is outside the automatic planned-task loop: do
-not require `tasks.md` task/section identifiers or dispatch
-verification again merely because it uses `openspec-implementer`. Never
-delegate a fix for an unselected or SUGGESTION-only finding on your own
-initiative. After fixes land, re-run only the reviewers whose findings were
-addressed if the user wants confirmation; otherwise proceed to archive.
+<text>"). Selecting an out-of-Brief finding authorizes only that finding's
+concrete bounded correction without another Brief confirmation; it does not
+authorize adjacent cleanup or any unselected finding. This finding-ID batch is
+outside the automatic planned-task loop: do not require `tasks.md` task/section
+identifiers or dispatch verification again merely because it uses
+`openspec-implementer`. Never delegate a fix for an unselected or
+SUGGESTION-only finding on your own initiative. After fixes land, re-run only
+the reviewers whose findings were addressed if the user wants confirmation;
+otherwise proceed to archive.
 
 ## Language
 
