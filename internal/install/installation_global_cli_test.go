@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 )
 
@@ -228,16 +229,17 @@ func installationRequestForDescriptors(
 	for _, descriptor := range descriptors {
 		extras[descriptor.optionKey] = true
 	}
+	assetsDir := testCodegraphAssets(t)
 	request := InstallationRequest{
 		Extras:    extras,
-		AssetsDir: testCodegraphAssets(t),
+		Assets:    assetfs.Directory(assetsDir),
 		ConfigDir: target,
 	}
 	if withManagedFile {
-		source := filepath.Join(t.TempDir(), "managed.md")
+		source := filepath.Join(assetsDir, "managed.md")
 		writeTestFile(t, source, "managed\n")
 		request.Items = []catalog.Item{{
-			Name: "managed", Source: source, Dest: "managed.md", Kind: catalog.CopyFile,
+			Name: "managed", Source: "managed.md", Dest: "managed.md", Kind: catalog.CopyFile,
 		}}
 	}
 	return request
@@ -719,7 +721,8 @@ func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
 	}
 
 	assets := filepath.Join("..", "..", "assets")
-	categories, err := catalog.Load(assets)
+	assetSource := assetfs.Directory(assets)
+	categories, err := catalog.Load(assetSource)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -732,7 +735,7 @@ func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
 			if item.Name != "openspec" {
 				continue
 			}
-			entries, err := os.ReadDir(item.Source)
+			entries, err := assetSource.ReadDir(item.Source)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -776,7 +779,7 @@ func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
 
 	if _, err := ApplyInstallation(InstallationRequest{
 		Extras:    map[string]bool{openSpecOptionKey: true},
-		AssetsDir: assets,
+		Assets:    assetSource,
 		ConfigDir: target,
 	}); err != nil {
 		t.Fatal(err)

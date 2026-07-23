@@ -262,9 +262,16 @@ Return exactly:
 
 ### Shared implementation-result policy
 
-Apply this policy to every planned OpenSpec implementation batch, initial
-Direct Safe implementation result, and bounded Direct Safe review-fix result.
-The route-specific sections below decide what happens after classification.
+This shared strict policy is the default for every implementation result and
+every OpenSpec control point that invokes it. Apply it without exception to an
+initial Direct Safe result, a bounded Direct Safe review-fix result, Direct
+Fast, OpenSpec bootstrap and target resolution, post-verification finding-ID
+fixes, and final OpenSpec verification. The sole route-specific classification
+exception is inside the automatic planned-task loop: only a section-bounded
+planned OpenSpec task batch selected from the active change's fresh `tasks.md`
+may use the deferrable or benign classifications defined below. Any result that
+is not explicitly eligible for that exception remains subject to this strict
+default.
 
 An intermediate non-zero command is corrected only when the same worker
 identifies the failure, later runs an equivalent or broader relevant command
@@ -285,6 +292,16 @@ A mandatory stop applies when any of these is true:
 - a later successful command is unrelated to or narrower than the failed
   command's relevant scope; or
 - a TDD or expected failure remains red at batch end.
+
+For the strict default routes above, every listed condition is a mandatory
+stop. Only for an eligible section-bounded planned-task batch, classify a local
+`partial`, local `blocked`, or red focused test as deferrable when the affected
+incomplete tasks remain unchecked and no planned-loop hard blocker exists.
+Classify an additional read or a successful focused test of modified code as a
+benign, continuable deviation only when it serves the bounded batch. These
+classifications never apply to Direct work, review-fix batches, bootstrap,
+target resolution, or final verification, and they do not make incomplete or
+red work complete.
 
 On every mandatory stop, apply this shared mandatory-stop policy in two ordered,
 separate steps:
@@ -481,8 +498,9 @@ post-verification review-fix batch identified by finding IDs; that batch keeps
 the routing defined by the Review gate below.
 
 **Fresh-state invariant:** At every planned-task decision point—before the
-initial tree, before each implementer dispatch, and after each clean
-result—resolve the active change from OpenSpec again. In the active
+initial tree, before each implementer dispatch, after each result, before the
+combined deferred-work report, and before each retry—resolve the active change
+from OpenSpec again. In the active
 local context run `openspec status --change <name> --json`, retaining `--store
 <id>` for an explicit store. Require status to report the tasks artifact complete,
 read the resolved current `tasks.md`, and recompute the complete tree and next
@@ -516,54 +534,114 @@ fresh file, not from worker claims.
 between-section continuation question. Apply the fresh-state invariant, select
 exactly the pending tasks in the next incomplete named section, and dispatch
 that one section as the bounded batch. After every clean result, apply the
-fresh-state invariant and automatically repeat for the next incomplete section
-until no pending tasks remain or a mandatory stop occurs. Do not display the
-tree, return control, or otherwise pause between clean section batches. Never
-issue an unbounded "finish all tasks" prompt.
+fresh-state invariant and automatically repeat for the next incomplete section.
+After an eligible deferrable result, apply the deferred-work and independence
+rules below instead of immediately asking a question. Continue the forward pass
+until no pending tasks remain, a hard blocker occurs, or no later section can be
+proved independent of every deferred batch. Do not display the tree, return
+control, or otherwise pause between runnable section batches. Never issue an
+unbounded "finish all tasks" prompt.
 
 Every planned-task implementer prompt MUST name the section, list the exact task
 identifiers and short summaries in the batch, require implementation of only
 that batch, and require only those completed task checkboxes to be marked. It
-MUST require focused textual checks relevant to the instruction changes in that
-batch and explicitly prohibit the repository's mandatory tests and build during
-planned-task implementation; those commands are reserved for final OpenSpec
-verification. Its result contract MUST preserve every command in execution
-order with its exit code, identify the later equivalent-or-broader relevant
-successful rerun for each non-zero command when one exists, and report every
-deviation or out-of-scope change. If the fresh state shows an intended task or
-section is already complete, do not dispatch stale work; use the recomputed next
-batch.
+MUST require validation relevant to the bounded changes. The implementer MAY run
+focused textual checks and focused tests that exercise code modified by that
+batch. It MUST NOT run the full repository test suite or any build; mandatory
+full suites and builds are reserved for final OpenSpec verification. Its result
+contract MUST preserve every command in execution order with its exit code,
+identify the later equivalent-or-broader relevant successful rerun for each
+non-zero command when one exists, and report every deviation or out-of-scope
+change. Require the implementer to leave every incomplete or red task unchecked
+and never mark a task complete merely because the batch ended. It must stop and
+report out-of-batch writes, functional expansion, destructive commands,
+unresolvable OpenSpec state, or a checked-task/red-validation conflict instead
+of repairing, reinterpreting, or working around them. If the fresh state shows
+an intended task or section is already complete, do not dispatch stale work;
+use the recomputed next batch.
+
+**Deferred-evidence record:** Accumulate one record for every deferrable
+planned-task incident and every benign continuable deviation. For each deferred
+batch retain its section and task identifiers, fresh checkbox state, worker
+status, every command and exit code in execution order, focused-validation
+state, blocker or incomplete-work reason, files touched, and deviations. Keep
+the corresponding incomplete tasks unchecked. For benign additional reads and
+successful focused tests, retain the same available command, file, and purpose
+evidence with the batch record. Never erase an earlier failure merely because
+later independent work succeeds.
+
+**Conservative independence gate:** After deferring a batch, refresh state and
+dispatch a later pending section only when current planning artifacts, the
+bounded task scopes, or retained worker diagnostics explicitly establish that
+the later section does not consume, validate, or depend on any deferred work.
+Section order, different section names, silence, and assumptions are not
+independence evidence. Missing, conflicting, or ambiguous evidence means
+dependency, so do not dispatch that section. Apply this gate against every
+currently deferred batch before each later dispatch.
+
+**Single retry round:** When the independent forward pass has exhausted its
+runnable work, apply the fresh-state invariant and present one combined report
+containing all accumulated deferred incidents and benign deviations. Do not ask
+an intermediate question. Then run exactly one final retry round. Before each
+retry, refresh state and recompute the bounded batch from only its current
+unchecked tasks; skip tasks that fresh state already shows complete or changed.
+Retry each still-pending deferred batch at most once, and allow progression
+among retry batches only when the conservative independence gate permits it.
+Never re-queue a retried batch, create a second deferred queue, or start another
+retry round.
+
+At the end of that one retry round, apply the fresh-state invariant. If any
+planned task remains unchecked, no retry batch is runnable, a local block is
+unresolved, or relevant focused-validation evidence remains red, stop before
+final verification. Retain the final retry evidence, render the fresh tree when
+available, report the unresolved work, and apply the shared mandatory-stop
+interaction exactly once. Only fresh state with every task complete and no
+relevant red evidence may enter final verification.
 
 ### Implementation stops and completion routing
 
-After every planned-task implementer result, apply the shared
-implementation-result policy. On a shared
-mandatory stop, dispatch no further batch. Apply the fresh-state invariant and
-render the complete compact tree when current state is resolvable; never render
-cached state. Then apply the shared mandatory-stop policy, reporting the worker
-and command evidence or state conflict before asking its one next-action
-question. If current OpenSpec task state cannot be resolved safely, include the
+After every planned-task implementer result, apply the fresh-state invariant and
+classify the result under the planned-task exception to the shared
+implementation-result policy. A clean result or benign additional read or
+successful focused test may continue. An eligible local `partial`, local
+`blocked`, or red focused-test result enters the deferred-evidence record only
+while its incomplete tasks remain unchecked and no hard blocker exists. Every
+other non-clean result applies the shared strict default.
+
+A planned-loop hard blocker exists when the worker writes outside the exact
+bounded batch, expands functional behavior beyond its tasks, runs a destructive
+command, runs a full repository suite or build, fresh OpenSpec state cannot be
+resolved safely, a checked task has relevant red validation, or other final
+evidence is unsafe and ineligible for local deferral. Stop immediately and
+dispatch no further batch. Never ignore red evidence, uncheck or check tasks to
+remove a conflict, or relabel incomplete work as complete. Render the complete
+compact tree when current state is resolvable; never render cached state. Then
+apply the shared mandatory-stop policy, reporting the worker and command
+evidence or state conflict before asking its one next-action question. If
+current OpenSpec task state cannot be resolved safely, include the
 state-resolution evidence and report that the complete tree is unavailable
 before asking the question.
 
-Focused textual-check commands are commands under the shared result policy:
-preserve every exit code and stop on any uncorrected failure, non-clean worker
-status, deviation, or out-of-scope work. Deferring mandatory repository tests
-and build is required planned-task behavior, not missing implementation
-verification.
+Focused textual checks and focused tests of modified code are implementation
+commands under the result policy: preserve every exit code. A successful
+focused test may be retained as a benign deviation; a red focused test may be
+deferred only under the eligibility and unchecked-task rules above. Deferring
+the mandatory full repository suite and build is required planned-task
+behavior, not missing implementation verification.
 
-Only after a clean result, including a fully evidenced corrected intermediate
-failure, apply the fresh-state invariant and continue automatically. Stop when
-that fresh state conflicts with the requested batch or the worker's completion
-report.
+Only after a clean result, a benign continuable deviation, or an eligible
+deferrable result may the loop consider automatic continuation. A corrected
+intermediate failure must still be fully evidenced. Stop when fresh state
+conflicts with the requested batch or the worker's completion report.
 
-Surface the worker evidence, failed command and exit code, or state conflict to
-the user through the shared mandatory-stop policy. Do not invent substitute
-tasks, broaden the batch, retry around the stop, or continue automatic chaining
-before the user selects an action. A stale intended batch found complete before
-dispatch is only skipped as described above; an unexpected conflict during or
-after a dispatch is a mandatory stop. A clean `done` result does not prove
-overall completion; only the fresh-state invariant does.
+Surface hard-blocker or final unresolved-work evidence, failed command and exit
+code, or state conflict to the user through the shared mandatory-stop policy.
+Do not invent substitute tasks, broaden the batch, retry around a hard stop, or
+continue automatic chaining before the user selects an action. A stale intended
+batch found complete before dispatch is only skipped as described above; an
+unexpected conflict during or after a dispatch is a mandatory stop. A clean
+`done` result does not prove overall completion; only the fresh-state invariant
+does.
 
 **Completion rule:** Whenever the fresh-state invariant shows no pending tasks,
 do not ask for continuation. Automatically dispatch

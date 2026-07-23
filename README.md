@@ -1,4 +1,3 @@
-# Angel AI OpenCode
 
 ```
     _                     _       _     _
@@ -9,15 +8,42 @@
                   |___/
 ```
 
-Instalador personal de mi configuración de [opencode](https://opencode.ai): una
-TUI por pasos donde selecciono qué agentes, skills, plugins y ajustes quiero
-instalar en `~/.config/opencode`.
+## Instalación
 
-Se llama "opencode" y no solo "Angel AI" porque este repo es la configuración
-para ese harness en concreto — un equivalente para otra herramienta sería un
-repo hermano, no una rama de este.
+La distribución inicial admite únicamente **macOS en Apple Silicon**
+(`Darwin/arm64`). No requiere Go ni clonar este repositorio. Instala la última
+versión estable con:
 
-## Uso
+```sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Angel-M-R/angel-ai-opencode/main/install.sh | /bin/sh
+```
+
+El instalador verifica la descarga y coloca el ejecutable en
+`~/.local/bin/angel-ai`. Si `~/.local/bin` no está en `PATH`, muestra
+`export PATH="$HOME/.local/bin:$PATH"` para aplicarlo manualmente; nunca modifica
+el perfil del shell.
+
+```sh
+angel-ai                       # abre el wizard interactivo
+angel-ai version               # muestra la versión instalada sin usar la red
+angel-ai update                # fuerza una comprobación de actualización
+angel-ai --all                 # instala todo sin TUI
+angel-ai --all --dry-run       # muestra el plan sin tocar nada
+angel-ai --target /otra/ruta   # usa otro directorio de configuración
+```
+
+Las versiones estables comprueban automáticamente si existe una versión más
+nueva antes de abrir la TUI. Una actualización disponible se verifica, sustituye
+el ejecutable de forma atómica y relanza el mismo comando. Si la comprobación o
+la actualización falla, se muestra un aviso y se continúa con la versión actual
+cuando sea seguro. Los builds locales con versión `dev` no consultan ni aplican
+actualizaciones.
+
+Esta primera distribución no incluye macOS Intel, Linux, Windows, Homebrew,
+canales beta o prerelease, firma de Apple ni notarización. El binario inicial no
+está firmado ni notarizado y macOS puede mostrar advertencias de seguridad.
+
+## Uso desde el repositorio
 
 ```sh
 go run .                  # abre el wizard

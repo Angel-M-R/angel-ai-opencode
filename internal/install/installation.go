@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 
+	"angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 )
 
@@ -19,7 +22,7 @@ import (
 type InstallationRequest struct {
 	Items     []catalog.Item
 	Extras    map[string]bool
-	AssetsDir string
+	Assets    assets.Source
 	ConfigDir string
 }
 
@@ -122,13 +125,13 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 	for _, item := range request.Items {
 		switch item.Kind {
 		case catalog.MergeJSON:
-			patch, err := readJSONObject(item.Source)
+			patch, err := readAssetJSONObject(request.Assets, item.Source)
 			if err != nil {
 				return preparedInstallation{}, fmt.Errorf("parsing fragment %s: %w", item.Name, err)
 			}
 			fragments = append(fragments, patch)
 		case catalog.CopyDir:
-			files, err := prepareDirectory(item.Source, filepath.Join(request.ConfigDir, item.Dest))
+			files, err := prepareDirectory(request.Assets, item.Source, filepath.Join(request.ConfigDir, item.Dest))
 			if err != nil {
 				return preparedInstallation{}, fmt.Errorf("preparing %s: %w", item.Name, err)
 			}
@@ -139,7 +142,7 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 				globalAgents = &copy
 				continue
 			}
-			file, err := prepareSourceFile(item.Source, filepath.Join(request.ConfigDir, item.Dest), false)
+			file, err := prepareSourceFile(request.Assets, item.Source, filepath.Join(request.ConfigDir, item.Dest), false)
 			if err != nil {
 				return preparedInstallation{}, fmt.Errorf("preparing %s: %w", item.Name, err)
 			}
@@ -150,7 +153,7 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 	codegraphSelected, codegraphSpecified := request.Extras[codegraphOptionKey]
 	var codegraphObject map[string]any
 	if codegraphSpecified && codegraphSelected {
-		patch, err := readJSONObject(filepath.Join(request.AssetsDir, "integrations", "codegraph", "mcp.json"))
+		patch, err := readAssetJSONObject(request.Assets, "integrations/codegraph/mcp.json")
 		if err != nil {
 			return preparedInstallation{}, fmt.Errorf("reading CodeGraph MCP config: %w", err)
 		}
@@ -215,32 +218,29 @@ func (file preparedFile) planLine() string {
 	}
 }
 
-func prepareSourceFile(source, target string, fullReplacement bool) (preparedFile, error) {
-	content, err := os.ReadFile(source)
+func prepareSourceFile(source assets.Source, sourcePath, target string, fullReplacement bool) (preparedFile, error) {
+	content, err := source.ReadFile(sourcePath)
 	if err != nil {
 		return preparedFile{}, err
 	}
-	info, err := os.Stat(source)
+	mode, err := source.FileMode(sourcePath)
 	if err != nil {
 		return preparedFile{}, err
 	}
-	return prepareFile(target, content, info.Mode().Perm(), fullReplacement)
+	return prepareFile(target, content, mode, fullReplacement)
 }
 
-func prepareDirectory(source, target string) ([]preparedFile, error) {
+func prepareDirectory(source assets.Source, sourceRoot, target string) ([]preparedFile, error) {
 	var files []preparedFile
-	err := filepath.WalkDir(source, func(path string, entry os.DirEntry, err error) error {
+	err := source.WalkDir(sourceRoot, func(sourcePath string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		relative, err := filepath.Rel(source, path)
-		if err != nil {
-			return err
-		}
-		file, err := prepareSourceFile(path, filepath.Join(target, relative), false)
+		relative := strings.TrimPrefix(sourcePath, sourceRoot+"/")
+		file, err := prepareSourceFile(source, sourcePath, filepath.Join(target, filepath.FromSlash(relative)), false)
 		if err != nil {
 			return err
 		}
@@ -273,7 +273,8 @@ func prepareCMUXExtra(prepared *preparedInstallation, request InstallationReques
 	}
 	for _, name := range cmuxPluginFiles {
 		file, err := prepareSourceFile(
-			filepath.Join(request.AssetsDir, "integrations", "cmux", name),
+			request.Assets,
+			path.Join("integrations", "cmux", name),
 			filepath.Join(request.ConfigDir, "plugins", name),
 			false,
 		)
@@ -285,8 +286,8 @@ func prepareCMUXExtra(prepared *preparedInstallation, request InstallationReques
 	return nil
 }
 
-func readJSONObject(path string) (map[string]any, error) {
-	raw, err := os.ReadFile(path)
+func readAssetJSONObject(source assets.Source, sourcePath string) (map[string]any, error) {
+	raw, err := source.ReadFile(sourcePath)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +387,8 @@ func prepareUIExtras(prepared *preparedInstallation, request InstallationRequest
 	if request.Extras["angel-logo"] {
 		for _, name := range angelLogoFiles {
 			file, err := prepareSourceFile(
-				filepath.Join(request.AssetsDir, "tui-plugins", name),
+				request.Assets,
+				path.Join("tui-plugins", name),
 				filepath.Join(request.ConfigDir, "tui-plugins", name),
 				false,
 			)
@@ -429,12 +431,12 @@ func prepareAgentsFile(
 ) (preparedFile, bool, error) {
 	path := filepath.Join(request.ConfigDir, "AGENTS.md")
 	if globalAgents != nil {
-		content, err := os.ReadFile(globalAgents.Source)
+		content, err := request.Assets.ReadFile(globalAgents.Source)
 		if err != nil {
 			return preparedFile{}, false, err
 		}
 		if codegraphSpecified && codegraphSelected {
-			guidance, err := os.ReadFile(filepath.Join(request.AssetsDir, "integrations", "codegraph", "AGENTS.md"))
+			guidance, err := request.Assets.ReadFile("integrations/codegraph/AGENTS.md")
 			if err != nil {
 				return preparedFile{}, false, err
 			}
@@ -462,7 +464,7 @@ func prepareAgentsFile(
 		return preparedFile{}, false, err
 	}
 	if codegraphSelected {
-		guidance, err := os.ReadFile(filepath.Join(request.AssetsDir, "integrations", "codegraph", "AGENTS.md"))
+		guidance, err := request.Assets.ReadFile("integrations/codegraph/AGENTS.md")
 		if err != nil {
 			return preparedFile{}, false, err
 		}

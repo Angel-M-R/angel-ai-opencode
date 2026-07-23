@@ -4,11 +4,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	assetfs "angel-ai-opencode/internal/assets"
 )
 
 func TestLoadGroupsNestedOpenSpecSkills(t *testing.T) {
 	assets := filepath.Join("..", "..", "assets")
-	categories, err := Load(assets)
+	categories, err := Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +30,7 @@ func TestLoadGroupsNestedOpenSpecSkills(t *testing.T) {
 		t.Fatalf("OpenSpec catalog items = %#v, want one grouped bundle", openSpecItems)
 	}
 	item := openSpecItems[0]
-	if item.Name != "openspec" || item.Source != filepath.Join(assets, "skills", "openspec") ||
+	if item.Name != "openspec" || item.Source != "skills/openspec" ||
 		item.Dest != filepath.Join("skills", "openspec") || item.Kind != CopyDir {
 		t.Fatalf("OpenSpec catalog item = %#v, want nested CopyDir bundle", item)
 	}

@@ -1,0 +1,223 @@
+name: Stable macOS Apple Silicon Release
+
+run-name: Release ${{ github.ref_name }} for macOS Apple Silicon
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+env:
+  ARTIFACT_NAME: angel-ai-darwin-arm64
+
+jobs:
+  validate-tag:
+    name: Validate stable tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a stable SemVer tag push
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" != "push" || "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            echo "Stable releases require a pushed tag." >&2
+            exit 1
+          fi
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Tag must be a stable SemVer such as v1.2.3." >&2
+            exit 1
+          fi
+
+  unit:
+    name: Full unit suite
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run all Go tests
+        run: go test ./...
+
+  updater-integration:
+    name: Updater integration suite
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run updater integration tests
+        run: >-
+          go test ./internal/updater -count=1
+          -run '^(TestUpdaterRejectsChecksumMismatchAndCleansTemporaryState|TestUpdaterAtomicallyReplacesAndRelaunchesWithOriginalProcessState|TestUpdaterRelaunchMarkerCompletesAutomaticTUIFlowWithoutLooping|TestUpdaterReplacementFailureRestoresCurrentExecutable|TestUpdaterRelaunchFailureRollsBackImmediately)$'
+
+  installer-integration:
+    name: Installer integration suite
+    needs: validate-tag
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run installer integration tests
+        run: /bin/sh tests/install_integration_test.sh
+
+  build:
+    name: Build macOS Apple Silicon artifact
+    needs:
+      - validate-tag
+      - unit
+      - updater-integration
+      - installer-integration
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the self-contained artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
+            -trimpath \
+            -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o "dist/${ARTIFACT_NAME}" \
+            .
+          chmod 0755 "dist/${ARTIFACT_NAME}"
+      - name: Verify the injected version
+        shell: bash
+        run: |
+          set -euo pipefail
+          reported_version=$("dist/${ARTIFACT_NAME}" version)
+          test "${reported_version}" = "${GITHUB_REF_NAME}"
+      - name: Generate checksum and latest manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest=$(shasum -a 256 "dist/${ARTIFACT_NAME}" | cut -d ' ' -f 1)
+          printf '%s  %s\n' "${digest}" "${ARTIFACT_NAME}" >"dist/${ARTIFACT_NAME}.sha256"
+          artifact_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ARTIFACT_NAME}"
+          printf '{"version":"%s","artifact_url":"%s","sha256":"%s"}\n' \
+            "${GITHUB_REF_NAME}" "${artifact_url}" "${digest}" >dist/manifest.json
+      - name: Upload exact release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-release-files
+          path: |
+            dist/${{ env.ARTIFACT_NAME }}
+            dist/${{ env.ARTIFACT_NAME }}.sha256
+            dist/manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
+  smoke:
+    name: Smoke test packaged macOS Apple Silicon artifact
+    needs: build
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - name: Download exact release files
+        uses: actions/download-artifact@v4
+        with:
+          name: stable-release-files
+          path: dist
+      - name: Verify format, architecture, version, embedded assets, and TUI startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="${PWD}/dist/${ARTIFACT_NAME}"
+          chmod 0755 "${artifact}"
+
+          test "$(uname -s)" = "Darwin"
+          test "$(uname -m)" = "arm64"
+          format=$(file "${artifact}")
+          [[ "${format}" == *"Mach-O 64-bit executable arm64"* ]]
+
+          version_output=$(env \
+            HTTP_PROXY=http://127.0.0.1:9 \
+            HTTPS_PROXY=http://127.0.0.1:9 \
+            ALL_PROXY=http://127.0.0.1:9 \
+            NO_PROXY= \
+            "${artifact}" version)
+          test "${version_output}" = "${GITHUB_REF_NAME}"
+
+          embedded_cwd=$(mktemp -d)
+          embedded_target=$(mktemp -d)
+          embedded_output="${RUNNER_TEMP}/embedded-assets-smoke.txt"
+          (
+            cd "${embedded_cwd}"
+            "${artifact}" --all --dry-run --target "${embedded_target}" >"${embedded_output}"
+          )
+          test -s "${embedded_output}"
+
+          tui_cwd=$(mktemp -d)
+          tui_transcript="${RUNNER_TEMP}/tui-smoke.txt"
+          (
+            cd "${tui_cwd}"
+            (sleep 2; printf 'q') | env \
+              ANGEL_AI_UPDATE_RELAUNCHED=1 \
+              TERM=xterm-256color \
+              script -q "${tui_transcript}" "${artifact}"
+          )
+          grep -q 'Angel AI' "${tui_transcript}"
+
+  publish:
+    name: Publish stable GitHub Release
+    needs:
+      - validate-tag
+      - unit
+      - updater-integration
+      - installer-integration
+      - build
+      - smoke
+    if: >-
+      ${{ always() &&
+          needs.validate-tag.result == 'success' &&
+          needs.unit.result == 'success' &&
+          needs.updater-integration.result == 'success' &&
+          needs.installer-integration.result == 'success' &&
+          needs.build.result == 'success' &&
+          needs.smoke.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated release files
+        uses: actions/download-artifact@v4
+        with:
+          name: stable-release-files
+          path: dist
+      - name: Revalidate release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c "${ARTIFACT_NAME}.sha256"
+          digest=$(sha256sum "${ARTIFACT_NAME}" | cut -d ' ' -f 1)
+          grep -Fq "\"version\":\"${GITHUB_REF_NAME}\"" manifest.json
+          grep -Fq "\"artifact_url\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ARTIFACT_NAME}\"" manifest.json
+          grep -Fq "\"sha256\":\"${digest}\"" manifest.json
+      - name: Publish release files and generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/${ARTIFACT_NAME}" \
+            "dist/${ARTIFACT_NAME}.sha256" \
+            "dist/manifest.json" \
+            --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "macOS Apple Silicon only. This artifact is not Apple signed or notarized." \
+            --generate-notes \
+            --latest

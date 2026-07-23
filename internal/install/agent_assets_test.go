@@ -1,6 +1,7 @@
 package install
 
 import (
+	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 	"os"
 	"path/filepath"
@@ -193,7 +194,9 @@ func TestOrchestratorSafeDirectExecutionContract(t *testing.T) {
 func TestOrchestratorCorrectedIntermediateFailureContract(t *testing.T) {
 	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
 	requireTextInOrder(t, section,
-		"Apply this policy to every planned OpenSpec implementation batch, initial Direct Safe implementation result, and bounded Direct Safe review-fix result.",
+		"This shared strict policy is the default for every implementation result and every OpenSpec control point that invokes it.",
+		"The sole route-specific classification exception is inside the automatic planned-task loop",
+		"Any result that is not explicitly eligible for that exception remains subject to this strict default.",
 		"An intermediate non-zero command is corrected only when",
 		"the same worker identifies the failure",
 		"later runs an equivalent or broader relevant command with exit code zero",
@@ -216,10 +219,10 @@ func TestOrchestratorCorrectedIntermediateFailureContract(t *testing.T) {
 		)
 		requireTextInOrder(t,
 			orchestratorSection(t, "### Implementation stops and completion routing", "### Between phases"),
-			"apply the shared implementation-result policy",
-			"On a shared mandatory stop",
-			"Only after a clean result",
-			"apply the fresh-state invariant and continue automatically",
+			"classify the result under the planned-task exception to the shared implementation-result policy",
+			"Every other non-clean result applies the shared strict default.",
+			"Stop immediately and dispatch no further batch.",
+			"apply the shared mandatory-stop policy",
 		)
 	})
 }
@@ -242,11 +245,159 @@ func TestOrchestratorMandatoryImplementationStopsContract(t *testing.T) {
 		})
 	}
 	requireTextInOrder(t, section,
+		"For the strict default routes above, every listed condition is a mandatory stop.",
+		"Only for an eligible section-bounded planned-task batch",
+		"local `partial`, local `blocked`, or red focused test as deferrable",
+		"the affected incomplete tasks remain unchecked",
+		"Classify an additional read or a successful focused test of modified code as a benign, continuable deviation",
+		"These classifications never apply to Direct work, review-fix batches, bootstrap, target resolution, or final verification",
 		"On every mandatory stop, apply this shared mandatory-stop policy in two ordered, separate steps:",
 		"First report the blocking status and all retained evidence needed to choose an action",
 		"Then ask exactly one blocker-specific next-action `question`.",
 		"Until the user selects an action, do not retry, continue, broaden scope, select substitute work, advance to the route's next phase, or dispatch any worker.",
 	)
+}
+
+func TestOrchestratorPlannedBatchDeferralContract(t *testing.T) {
+	sharedPolicy := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+	plannedLoop := orchestratorSection(t, "### Planned-task implementation state", "### Between phases")
+
+	t.Run("limits eligibility to fresh section bounded planned batches", func(t *testing.T) {
+		requireTextInOrder(t, sharedPolicy,
+			"only a section-bounded planned OpenSpec task batch selected from the active change's fresh `tasks.md`",
+			"Any result that is not explicitly eligible for that exception remains subject to this strict default.",
+			"local `partial`, local `blocked`, or red focused test as deferrable",
+			"the affected incomplete tasks remain unchecked and no planned-loop hard blocker exists",
+		)
+	})
+
+	t.Run("accumulates incidents and benign deviations", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"**Deferred-evidence record:**",
+			"Accumulate one record for every deferrable planned-task incident and every benign continuable deviation.",
+			"section and task identifiers",
+			"fresh checkbox state",
+			"worker status",
+			"every command and exit code in execution order",
+			"focused-validation state",
+			"blocker or incomplete-work reason",
+			"files touched, and deviations",
+			"Keep the corresponding incomplete tasks unchecked.",
+		)
+	})
+
+	t.Run("requires affirmative independence", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"**Conservative independence gate:**",
+			"current planning artifacts, the bounded task scopes, or retained worker diagnostics explicitly establish",
+			"does not consume, validate, or depend on any deferred work",
+			"Section order, different section names, silence, and assumptions are not independence evidence.",
+			"Missing, conflicting, or ambiguous evidence means dependency",
+			"against every currently deferred batch before each later dispatch",
+		)
+	})
+
+	t.Run("reports once before one fresh retry round", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"**Single retry round:**",
+			"apply the fresh-state invariant and present one combined report containing all accumulated deferred incidents and benign deviations",
+			"Do not ask an intermediate question.",
+			"Then run exactly one final retry round.",
+			"Before each retry, refresh state and recompute the bounded batch from only its current unchecked tasks",
+			"Retry each still-pending deferred batch at most once",
+			"Never re-queue a retried batch, create a second deferred queue, or start another retry round.",
+		)
+		if count := strings.Count(plannedLoop, "Then run exactly one final retry round."); count != 1 {
+			t.Fatalf("final retry-round contract occurs %d times, want 1", count)
+		}
+	})
+
+	t.Run("stops unresolved work before verification", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"At the end of that one retry round, apply the fresh-state invariant.",
+			"any planned task remains unchecked",
+			"no retry batch is runnable",
+			"a local block is unresolved",
+			"focused-validation evidence remains red",
+			"stop before final verification",
+			"apply the shared mandatory-stop interaction exactly once",
+			"Only fresh state with every task complete and no relevant red evidence may enter final verification.",
+		)
+	})
+}
+
+func TestOrchestratorPlannedBatchImplementerContract(t *testing.T) {
+	plannedLoop := orchestratorSection(t, "### Automatic planned-task loop and bounded batches", "### Between phases")
+
+	t.Run("keeps focused validation with implementer", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"MUST require validation relevant to the bounded changes",
+			"MAY run focused textual checks and focused tests that exercise code modified by that batch",
+			"MUST NOT run the full repository test suite or any build",
+			"mandatory full suites and builds are reserved for final OpenSpec verification",
+		)
+	})
+
+	t.Run("preserves task state and hard stops", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"leave every incomplete or red task unchecked",
+			"never mark a task complete merely because the batch ended",
+			"out-of-batch writes, functional expansion, destructive commands, unresolvable OpenSpec state, or a checked-task/red-validation conflict",
+			"A planned-loop hard blocker exists",
+			"writes outside the exact bounded batch",
+			"expands functional behavior beyond its tasks",
+			"runs a destructive command",
+			"runs a full repository suite or build",
+			"fresh OpenSpec state cannot be resolved safely",
+			"a checked task has relevant red validation",
+			"Stop immediately and dispatch no further batch.",
+			"Never ignore red evidence, uncheck or check tasks to remove a conflict, or relabel incomplete work as complete.",
+		)
+	})
+}
+
+func TestOrchestratorStrictRoutesExcludePlannedDeferral(t *testing.T) {
+	sharedPolicy := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+	requireTextInOrder(t, sharedPolicy,
+		"Apply it without exception to an initial Direct Safe result, a bounded Direct Safe review-fix result, Direct Fast",
+		"OpenSpec bootstrap and target resolution",
+		"post-verification finding-ID fixes, and final OpenSpec verification",
+		"These classifications never apply to Direct work, review-fix batches, bootstrap, target resolution, or final verification",
+	)
+
+	t.Run("existing target resolution stays strict", func(t *testing.T) {
+		requireTextInOrder(t,
+			orchestratorSection(t, "## Execution route selection", "### Shared implementation-result policy"),
+			"retain and report the target-resolution command, exit code, and diagnostic",
+			"apply the shared mandatory-stop policy",
+		)
+	})
+
+	t.Run("bootstrap stays strict", func(t *testing.T) {
+		requireTextInOrder(t, orchestratorBootstrapSection(t),
+			"If bootstrap blocks or fails, do not launch the OpenSpec worker",
+			"apply the shared mandatory-stop policy",
+		)
+	})
+
+	t.Run("direct and review fixes stay strict", func(t *testing.T) {
+		requireTextInOrder(t,
+			orchestratorSection(t, "### Safe direct execution", "## Delegation rules"),
+			"clean under the shared implementation-result policy",
+			"apply the shared mandatory-stop policy",
+			"same structured result contract used for the initial Direct task",
+			"Apply that policy to every other unsafe fix result.",
+		)
+	})
+
+	t.Run("final verification stays strict", func(t *testing.T) {
+		requireTextInOrder(t,
+			orchestratorSection(t, "### Implementation stops and completion routing", "### Between phases"),
+			"Automatically dispatch `openspec-verifier`",
+			"If verification fails, blocks, or is incomplete",
+			"apply the shared mandatory-stop policy",
+		)
+	})
 }
 
 func TestOrchestratorMandatoryStopInteractionContract(t *testing.T) {
@@ -605,7 +756,8 @@ bypass these limits; native permissions are not a complete sandbox.`
 
 func TestSelectedReviewerAssetsAreCatalogedAndInstalledUnchanged(t *testing.T) {
 	assets := filepath.Join("..", "..", "assets")
-	categories, err := catalog.Load(assets)
+	assetSource := assetfs.Directory(assets)
+	categories, err := catalog.Load(assetSource)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +777,7 @@ func TestSelectedReviewerAssetsAreCatalogedAndInstalledUnchanged(t *testing.T) {
 			if !ok {
 				continue
 			}
-			if item.Kind != catalog.CopyFile || item.Source != filepath.Join(assets, "agents", fileName) || item.Dest != filepath.Join("agents", fileName) {
+			if item.Kind != catalog.CopyFile || item.Source != "agents/"+fileName || item.Dest != filepath.Join("agents", fileName) {
 				t.Fatalf("catalog item %q = %#v", item.Name, item)
 			}
 			selected = append(selected, item)
@@ -637,12 +789,12 @@ func TestSelectedReviewerAssetsAreCatalogedAndInstalledUnchanged(t *testing.T) {
 
 	configDir := t.TempDir()
 	if _, err := ApplyInstallation(InstallationRequest{
-		Items: selected, AssetsDir: assets, ConfigDir: configDir,
+		Items: selected, Assets: assetSource, ConfigDir: configDir,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range selected {
-		want, err := os.ReadFile(item.Source)
+		want, err := assetSource.ReadFile(item.Source)
 		if err != nil {
 			t.Fatal(err)
 		}

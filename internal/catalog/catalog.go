@@ -5,10 +5,11 @@ package catalog
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
+
+	"angel-ai-opencode/internal/assets"
 )
 
 // Kind describes how an Item is installed.
@@ -26,7 +27,7 @@ const (
 // Item is one selectable thing in the wizard.
 type Item struct {
 	Name   string // display name, e.g. "angel-orchestrator"
-	Source string // absolute path inside assets/
+	Source string // slash-separated path relative to the asset source root
 	Dest   string // path relative to the opencode config dir; empty for MergeJSON
 	Kind   Kind
 }
@@ -53,18 +54,18 @@ var sections = []struct {
 	{"fragments", "Config (opencode.json)", "", MergeJSON},
 }
 
-// Load builds the categories from assetsDir. Missing subdirectories are
+// Load builds the categories from source. Missing subdirectories are
 // skipped so a trimmed-down assets tree still works.
-func Load(assetsDir string) ([]Category, error) {
-	info, err := os.Stat(assetsDir)
+func Load(source assets.Source) ([]Category, error) {
+	info, err := source.Stat(".")
 	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("assets directory not found: %s", assetsDir)
+		return nil, fmt.Errorf("asset source not found: %s", source.Name())
 	}
 
 	var categories []Category
 	for _, section := range sections {
-		dir := filepath.Join(assetsDir, section.dir)
-		entries, err := os.ReadDir(dir)
+		dir := section.dir
+		entries, err := source.ReadDir(dir)
 		if err != nil {
 			continue
 		}
@@ -80,15 +81,15 @@ func Load(assetsDir string) ([]Category, error) {
 				continue
 			}
 			item := Item{
-				Name:   strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())),
-				Source: filepath.Join(dir, entry.Name()),
+				Name:   strings.TrimSuffix(entry.Name(), path.Ext(entry.Name())),
+				Source: path.Join(dir, entry.Name()),
 				Kind:   section.kind,
 			}
 			if section.kind == CopyDir {
 				item.Name = entry.Name()
 			}
 			if section.kind != MergeJSON {
-				item.Dest = filepath.Join(section.destDir, entry.Name())
+				item.Dest = path.Join(section.destDir, entry.Name())
 			}
 			category.Items = append(category.Items, item)
 		}
@@ -100,7 +101,7 @@ func Load(assetsDir string) ([]Category, error) {
 		}
 	}
 	if len(categories) == 0 {
-		return nil, fmt.Errorf("no installable assets under %s", assetsDir)
+		return nil, fmt.Errorf("no installable assets under %s", source.Name())
 	}
 	return categories, nil
 }

@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 	"angel-ai-opencode/internal/install"
 )
@@ -93,7 +94,7 @@ type Model struct {
 	extras        []install.ExtraOption
 	extraSelected []bool
 
-	assetsDir string
+	assets    assets.Source
 	configDir string
 
 	phase  phase
@@ -114,7 +115,7 @@ type Model struct {
 
 // New builds the wizard with every catalog item preselected and extras set to
 // their descriptor defaults.
-func New(categories []catalog.Category, assetsDir, configDir string) Model {
+func New(categories []catalog.Category, assetSource assets.Source, configDir string) Model {
 	selected := make([][]bool, len(categories))
 	for i, category := range categories {
 		selected[i] = make([]bool, len(category.Items))
@@ -132,7 +133,7 @@ func New(categories []catalog.Category, assetsDir, configDir string) Model {
 		selected:      selected,
 		extras:        extras,
 		extraSelected: extraSelected,
-		assetsDir:     assetsDir,
+		assets:        assetSource,
 		configDir:     configDir,
 		asyncFlow:     true,
 	}
@@ -340,7 +341,7 @@ func (m *Model) enterConfirmation() {
 
 func (m Model) installationPlan() []string {
 	plan, err := install.PlanInstallation(install.InstallationRequest{
-		Items: m.chosen(), Extras: m.chosenExtras(), AssetsDir: m.assetsDir, ConfigDir: m.configDir,
+		Items: m.chosen(), Extras: m.chosenExtras(), Assets: m.assets, ConfigDir: m.configDir,
 	})
 	if err != nil {
 		return []string{"ERROR      " + err.Error()}
@@ -477,7 +478,7 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 		}
 		items := m.chosen()
 		extras := m.chosenExtras()
-		return m, installCmd(items, extras, m.assetsDir, m.configDir)
+		return m, installCmd(items, extras, m.assets, m.configDir)
 	}
 	return m, nil
 }
@@ -485,14 +486,14 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 func (m Model) startInstallation() (tea.Model, tea.Cmd) {
 	m.phase = installing
 	m.spinnerFrame = 0
-	cmd := installCmd(m.chosen(), m.chosenExtras(), m.assetsDir, m.configDir)
+	cmd := installCmd(m.chosen(), m.chosenExtras(), m.assets, m.configDir)
 	return m, tea.Batch(cmd, spinnerTick())
 }
 
-func installCmd(items []catalog.Item, extras map[string]bool, assetsDir, configDir string) tea.Cmd {
+func installCmd(items []catalog.Item, extras map[string]bool, assetSource assets.Source, configDir string) tea.Cmd {
 	return func() tea.Msg {
 		report, err := install.ApplyInstallation(install.InstallationRequest{
-			Items: items, Extras: extras, AssetsDir: assetsDir, ConfigDir: configDir,
+			Items: items, Extras: extras, Assets: assetSource, ConfigDir: configDir,
 		})
 		return installedMsg{report: report, err: err}
 	}
@@ -748,7 +749,7 @@ func listRangeFeedback(start, end, total int) string {
 }
 
 // Run starts the wizard.
-func Run(categories []catalog.Category, assetsDir, configDir string) error {
-	_, err := tea.NewProgram(New(categories, assetsDir, configDir)).Run()
+func Run(categories []catalog.Category, assetSource assets.Source, configDir string) error {
+	_, err := tea.NewProgram(New(categories, assetSource, configDir)).Run()
 	return err
 }
