@@ -536,7 +536,9 @@ func TestListViewsReserveWrappedVisualRowsInNarrowTerminals(t *testing.T) {
 			t.Fatalf("end view visual height = %d, want at most %d:\n%s", renderedHeight, height, view)
 		}
 		assertConfirmationControls(t, view)
-		if !strings.Contains(view, "Mostrando 6-6 de 6") || !strings.Contains(view, "plan-005.txt") {
+		lastEntryName := filepath.Base(plan[len(plan)-1])
+		finalRange := fmt.Sprintf("-%d de %d", len(plan), len(plan))
+		if !strings.Contains(view, finalRange) || !strings.Contains(view, lastEntryName) {
 			t.Fatalf("end navigation did not expose the final wrapped plan entry:\n%s", view)
 		}
 	})
