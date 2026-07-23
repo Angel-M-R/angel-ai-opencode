@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -131,14 +132,13 @@ func confirmationModel(t *testing.T, entryCount int) (Model, []string) {
 	expected := make([]string, entryCount)
 	for index := range items {
 		name := fmt.Sprintf("plan-%03d.txt", index)
-		source := filepath.Join(assetsDir, name)
-		if err := os.WriteFile(source, []byte(name), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(assetsDir, name), []byte(name), 0o644); err != nil {
 			t.Fatalf("write synthetic asset: %v", err)
 		}
 		destination := filepath.Join("synthetic", name)
 		items[index] = catalog.Item{
 			Name:   name,
-			Source: source,
+			Source: name,
 			Dest:   destination,
 			Kind:   catalog.CopyFile,
 		}
@@ -149,7 +149,7 @@ func confirmationModel(t *testing.T, entryCount int) (Model, []string) {
 		Name:  "synthetic",
 		Title: "Synthetic",
 		Items: items,
-	}}, assetsDir, configDir)
+	}}, assetfs.Directory(assetsDir), configDir)
 	model.extras = nil
 	model.extraSelected = nil
 	model.enterConfirmation()
@@ -650,7 +650,7 @@ func TestListViewsAllowZeroRowsAtChromeBoundary(t *testing.T) {
 func TestConfirmationPlanIsCachedUntilConfirmationIsReentered(t *testing.T) {
 	model, plan := confirmationModel(t, 3)
 	model = resizeModel(t, model, 24)
-	if err := os.RemoveAll(model.assetsDir); err != nil {
+	if err := os.RemoveAll(model.assets.Name()); err != nil {
 		t.Fatalf("remove assets after planning: %v", err)
 	}
 
@@ -846,7 +846,7 @@ func TestCompletionViewUsesNavigationAndExplicitExitKeys(t *testing.T) {
 }
 
 func TestCMUXSelectionDefaultsAndExplicitSelection(t *testing.T) {
-	model := New(nil, t.TempDir(), t.TempDir())
+	model := New(nil, assetfs.Directory(t.TempDir()), t.TempDir())
 	cmuxIndex := -1
 	for index, extra := range model.extras {
 		if extra.Key == "cmux" {

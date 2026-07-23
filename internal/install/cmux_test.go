@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 )
 
@@ -37,7 +38,7 @@ func TestCMUXPlanAndApplyVendoredPluginsWithoutConfigMutation(t *testing.T) {
 	writeTestFile(t, configPath, string(originalConfig))
 	request := InstallationRequest{
 		Extras:    map[string]bool{cmuxOptionKey: true},
-		AssetsDir: assets,
+		Assets:    assetfs.Directory(assets),
 		ConfigDir: target,
 	}
 
@@ -83,7 +84,6 @@ func TestCMUXPlanAndApplyVendoredPluginsWithoutConfigMutation(t *testing.T) {
 }
 
 func TestCMUXSelectedMissingPreflightStopsBeforeMutations(t *testing.T) {
-	assets := filepath.Join("..", "..", "assets")
 	source := filepath.Join(t.TempDir(), "managed.md")
 	writeTestFile(t, source, "managed\n")
 	tests := []struct {
@@ -122,10 +122,10 @@ func TestCMUXSelectedMissingPreflightStopsBeforeMutations(t *testing.T) {
 			})
 			request := InstallationRequest{
 				Items: []catalog.Item{{
-					Name: "managed", Source: source, Dest: "managed.md", Kind: catalog.CopyFile,
+					Name: "managed", Source: filepath.Base(source), Dest: "managed.md", Kind: catalog.CopyFile,
 				}},
 				Extras:    map[string]bool{cmuxOptionKey: true},
-				AssetsDir: assets,
+				Assets:    assetfs.Directory(filepath.Dir(source)),
 				ConfigDir: target,
 			}
 
@@ -159,7 +159,7 @@ func TestCMUXUnselectedBypassesExecutableLookup(t *testing.T) {
 	})
 	request := InstallationRequest{
 		Extras:    map[string]bool{cmuxOptionKey: false},
-		AssetsDir: filepath.Join("..", "..", "assets"),
+		Assets:    assetfs.Directory(filepath.Join("..", "..", "assets")),
 		ConfigDir: t.TempDir(),
 	}
 	if _, err := PlanInstallation(request); err != nil {
@@ -176,7 +176,7 @@ func TestCMUXReconciliationBackupsAndIdempotency(t *testing.T) {
 	target := t.TempDir()
 	request := InstallationRequest{
 		Extras:    map[string]bool{cmuxOptionKey: true},
-		AssetsDir: assets,
+		Assets:    assetfs.Directory(assets),
 		ConfigDir: target,
 	}
 	previous := make(map[string][]byte, len(cmuxPluginFiles))
@@ -258,7 +258,7 @@ func TestCMUXPartialRetryConvergesIndependently(t *testing.T) {
 
 	report, err := ApplyInstallation(InstallationRequest{
 		Extras:    map[string]bool{cmuxOptionKey: true},
-		AssetsDir: assets,
+		Assets:    assetfs.Directory(assets),
 		ConfigDir: target,
 	})
 	if err != nil {
@@ -290,7 +290,7 @@ func TestCMUXDeselectionPreservesInstalledPlugins(t *testing.T) {
 	target := t.TempDir()
 	selected := InstallationRequest{
 		Extras:    map[string]bool{cmuxOptionKey: true},
-		AssetsDir: assets,
+		Assets:    assetfs.Directory(assets),
 		ConfigDir: target,
 	}
 	if _, err := ApplyInstallation(selected); err != nil {
@@ -321,7 +321,7 @@ func TestCMUXDeselectionPreservesInstalledPlugins(t *testing.T) {
 
 	if _, err := ApplyInstallation(InstallationRequest{
 		Extras:    map[string]bool{cmuxOptionKey: false},
-		AssetsDir: assets,
+		Assets:    assetfs.Directory(assets),
 		ConfigDir: target,
 	}); err != nil {
 		t.Fatal(err)

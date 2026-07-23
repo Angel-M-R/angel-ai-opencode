@@ -1,9 +1,4 @@
-# implementation-cadence-selector Specification
-
-## Purpose
-TBD - created by archiving change add-openspec-implementation-cadence. Update Purpose after archive.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Planned batch outcomes are classified for deferral
 Only a result from a bounded planned OpenSpec task batch selected from the active change's fresh `tasks.md` MAY be deferred. The orchestrator SHALL classify local `partial`, local `blocked`, or red focused-test outcomes as deferrable only when the affected incomplete tasks remain unchecked and no hard blocker exists. It MUST retain the batch identity, task state, status, commands and exit codes, focused-validation evidence, blocker or incomplete-work reason, files touched, and deviations.
@@ -99,6 +94,8 @@ Implementation MUST update `assets/agents/angel-orchestrator.md` and the corresp
 - **WHEN** the orchestrator prompt gains deferral behavior
 - **THEN** focused contract tests assert that behavior and continue to assert strict Direct, bootstrap, target-resolution, review-fix, and final-verification handling
 
+## MODIFIED Requirements
+
 ### Requirement: Automatic planned-task execution
 When pending planned tasks exist, the orchestrator SHALL automatically execute all safe runnable work without asking a cadence or between-section continuation question. It MUST continue through clean section-bounded batches and, after a deferrable outcome, through later sections only when explicit evidence establishes independence. After the independent forward pass, it MUST perform the single final deferred-batch retry round. It SHALL stop when no tasks remain, a hard blocker occurs, or the retry round ends with pending work or final red evidence.
 
@@ -117,58 +114,6 @@ When pending planned tasks exist, the orchestrator SHALL automatically execute a
 #### Scenario: Final retry leaves incomplete work
 - **WHEN** the single retry round ends with unchecked tasks, no runnable work, or final red evidence
 - **THEN** the orchestrator applies the mandatory-stop interaction and does not begin verification
-
-### Requirement: Focused contract validation and repeated final verification
-The change MUST correct the two stale cadence assertions in `internal/install/agent_assets_test.go` and add focused contract coverage for route-wide report-first/question-second stop behavior and the absence of automatic recovery. Implementation MAY run focused textual and contract checks, but final verification MUST repeat the focused checks, mandatory repository tests and build, orchestrator synchronization check, and OpenSpec verification.
-
-#### Scenario: Stop contract tests are updated
-- **WHEN** the orchestrator stop protocol is revised
-- **THEN** the existing asset test corrects both stale cadence assertions and verifies evidence-before-question ordering, a safe stop option, route coverage, and no recovery action before user selection
-
-#### Scenario: Revised implementation reaches final verification
-- **WHEN** all newly added tasks are complete
-- **THEN** final verification reruns focused checks, the mandatory repository tests and build, the repository-to-global synchronization check, and OpenSpec verification with command and exit-code evidence
-
-### Requirement: Current OpenSpec task state drives planned-task implementation
-At every planned-task implementation decision point, the orchestrator MUST query the real OpenSpec status for the active change, read the resolved current `tasks.md`, and recompute the task tree and next batch. It MUST apply this invariant before the initial task-tree display, before every planned-task worker dispatch, and after every clean worker result. It MUST NOT select a planned-task batch from conversational history or a cached task list.
-
-#### Scenario: Task state changed since the previous batch
-- **WHEN** a prior batch or external actor changes task completion state
-- **THEN** the orchestrator selects the next batch from a fresh OpenSpec status query and `tasks.md` read
-
-#### Scenario: Current tasks cannot be resolved
-- **WHEN** OpenSpec status does not report a complete tasks artifact or the resolved `tasks.md` cannot be read
-- **THEN** the orchestrator reports the blocking evidence and unavailable task tree, then asks one contextual next-action question before taking any recovery action
-
-### Requirement: Complete compact task tree
-Before planned-task implementation begins, the orchestrator SHALL display the complete task hierarchy in a compact tree. At every mandatory implementation stop, it MUST refresh and display the complete tree when current task state can be resolved. The tree MUST show completed and total counts at the root and for each section, and every task MUST show its identifier, short text, and either `✓` when complete or `☐` when pending. Clean transitions between automatic section batches MUST NOT introduce a task-tree pause.
-
-#### Scenario: Mixed task completion before implementation
-- **WHEN** `tasks.md` contains completed and pending tasks across multiple sections before the first dispatch
-- **THEN** the rendered tree includes every section and task with accurate section progress and completion markers
-
-#### Scenario: Mandatory stop with resolvable task state
-- **WHEN** a mandatory stop occurs and fresh OpenSpec task state can be resolved
-- **THEN** the orchestrator displays the complete refreshed compact tree, reports the stop evidence, and then asks one contextual next-action question before taking any recovery action
-
-#### Scenario: Mandatory stop with unresolvable task state
-- **WHEN** a mandatory stop occurs because current OpenSpec task state cannot be resolved
-- **THEN** the orchestrator reports the blocking evidence and that the complete tree is unavailable without using cached task state, then asks one contextual next-action question
-
-#### Scenario: Clean section completes
-- **WHEN** an implementation section completes cleanly and pending tasks remain
-- **THEN** the orchestrator refreshes state and dispatches the next bounded section without a task-tree or cadence-boundary pause
-
-### Requirement: Bounded implementation batches
-Every planned-task implementation worker prompt MUST identify an exact bounded task batch containing only the pending tasks from one named incomplete section. The orchestrator MUST chain these section-bounded batches automatically rather than issue an unbounded completion request, and it MUST refresh task state before selecting each subsequent batch.
-
-#### Scenario: Automatic execution spans multiple sections
-- **WHEN** pending tasks exist in more than one section
-- **THEN** the orchestrator dispatches one explicitly identified incomplete section at a time and refreshes task state before selecting each subsequent section
-
-#### Scenario: Intended section is already complete
-- **WHEN** the refreshed `tasks.md` shows that the intended section no longer has pending work
-- **THEN** the orchestrator skips the stale batch and recomputes the next bounded section batch
 
 ### Requirement: Mandatory implementation stop conditions
 Strict report-first mandatory stops SHALL remain unchanged for OpenSpec target resolution, bootstrap, final verification, Direct Safe or Fast execution, and Direct review-fix routing. Inside the planned-task loop, the orchestrator MUST stop immediately for hard blockers, but SHALL defer eligible local `partial`, local `blocked`, and red focused-test outcomes while explicitly independent work remains. After the single retry round, any remaining pending work, unavailable runnable batch, unresolved block, or final red evidence MUST stop. At a stop, the orchestrator MUST preserve and report the evidence before asking exactly one contextual next-action question, and MUST perform no recovery action until the user responds.
@@ -223,14 +168,3 @@ After a fresh task-state read shows every task complete and no relevant validati
 #### Scenario: Selected review findings are fixed
 - **WHEN** the user selects post-verification review findings for a bounded fix batch
 - **THEN** the orchestrator retains the existing finding-ID routing without requiring `tasks.md` task or section identifiers or automatically repeating verification
-
-### Requirement: Canonical asset and global agent synchronization
-Implementation MUST update the repository orchestrator asset as the canonical instruction source and then replace the live global orchestrator file from it without creating a backup. The two files MUST be byte-for-byte identical after the update, and final verification MUST repeat the equality check.
-
-#### Scenario: Instructions are deployed
-- **WHEN** the repository asset has passed focused validation
-- **THEN** implementation overwrites `$HOME/.config/opencode/agents/angel-orchestrator.md` from `assets/agents/angel-orchestrator.md` without creating a backup and confirms equality
-
-#### Scenario: Synchronization is rechecked before verification completes
-- **WHEN** final verification runs after the revised implementation
-- **THEN** it confirms that the repository and installed global orchestrator files remain byte-for-byte identical

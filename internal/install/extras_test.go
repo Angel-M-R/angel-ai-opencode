@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 	"angel-ai-opencode/internal/install"
 )
@@ -77,7 +78,7 @@ func TestInstallationRemovesManagedCodegraphWhenNotSelected(t *testing.T) {
 	write(t, agentsPath, "# Existing rules\n\n"+codegraphGuidance+"\n")
 
 	if _, err := install.ApplyInstallation(install.InstallationRequest{
-		Extras: map[string]bool{"codegraph": false}, AssetsDir: assets, ConfigDir: target,
+		Extras: map[string]bool{"codegraph": false}, Assets: assetfs.Directory(assets), ConfigDir: target,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,7 @@ func TestInstallationConfiguresSelectedCodegraphIdempotently(t *testing.T) {
 `)
 
 	request := install.InstallationRequest{
-		Extras: map[string]bool{"codegraph": true}, AssetsDir: assets, ConfigDir: target,
+		Extras: map[string]bool{"codegraph": true}, Assets: assetfs.Directory(assets), ConfigDir: target,
 	}
 	if _, err := install.ApplyInstallation(request); err != nil {
 		t.Fatal(err)
@@ -200,7 +201,7 @@ func TestInstallationInstallsCodegraphWhenMissing(t *testing.T) {
 	t.Setenv("RACE_CONFIG_TARGET", opencodePath)
 
 	if _, err := install.ApplyInstallation(install.InstallationRequest{
-		Extras: map[string]bool{"codegraph": true}, AssetsDir: assets, ConfigDir: target,
+		Extras: map[string]bool{"codegraph": true}, Assets: assetfs.Directory(assets), ConfigDir: target,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +253,7 @@ func TestInstallationRejectsUnterminatedCodegraphGuidance(t *testing.T) {
 	write(t, filepath.Join(target, "AGENTS.md"), "# Rules\n\n<!-- codegraph-guidance -->\nunterminated\n")
 
 	_, err := install.ApplyInstallation(install.InstallationRequest{
-		Extras: map[string]bool{"codegraph": true}, AssetsDir: assets, ConfigDir: target,
+		Extras: map[string]bool{"codegraph": true}, Assets: assetfs.Directory(assets), ConfigDir: target,
 	})
 	if err == nil || !strings.Contains(err.Error(), "unterminated") {
 		t.Fatalf("expected an unterminated guidance error, got %v", err)
@@ -266,7 +267,7 @@ func TestInstallationComposesGlobalAgentsAndCodegraphIdempotently(t *testing.T) 
 	assets := codegraphAssets(t)
 	write(t, filepath.Join(assets, "agents-md", "AGENTS.md"), "# Angel rules\n")
 	write(t, filepath.Join(assets, "fragments", "mcp.json"), `{"mcp":{"context7":{"type":"remote"}}}`)
-	categories, err := catalog.Load(assets)
+	categories, err := catalog.Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +287,7 @@ func TestInstallationComposesGlobalAgentsAndCodegraphIdempotently(t *testing.T) 
 	t.Setenv("PATH", binDir)
 
 	request := install.InstallationRequest{
-		Items: items, Extras: map[string]bool{"codegraph": true}, AssetsDir: assets, ConfigDir: target,
+		Items: items, Extras: map[string]bool{"codegraph": true}, Assets: assetfs.Directory(assets), ConfigDir: target,
 	}
 	plan, err := install.PlanInstallation(request)
 	if err != nil {

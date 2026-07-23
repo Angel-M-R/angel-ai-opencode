@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 	"angel-ai-opencode/internal/install"
 )
@@ -26,7 +27,7 @@ func write(t *testing.T, path, content string) {
 func TestApplyReplacesOnlyMatchingFilesAndSkipsIdenticalContent(t *testing.T) {
 	assets := t.TempDir()
 	write(t, filepath.Join(assets, "skills", "my-skill", "SKILL.md"), "# managed\n")
-	categories, err := catalog.Load(assets)
+	categories, err := catalog.Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,7 @@ func TestApplyReplacesOnlyMatchingFilesAndSkipsIdenticalContent(t *testing.T) {
 	write(t, managedPath, "# previous\n")
 	write(t, userPath, "keep me\n")
 
-	request := install.InstallationRequest{Items: categories[0].Items, AssetsDir: assets, ConfigDir: target}
+	request := install.InstallationRequest{Items: categories[0].Items, Assets: assetfs.Directory(assets), ConfigDir: target}
 	report, err := install.ApplyInstallation(request)
 	if err != nil {
 		t.Fatal(err)
@@ -85,14 +86,14 @@ func TestApplyRecursivelyCopiesNestedOpenSpecSkills(t *testing.T) {
 	for name, content := range want {
 		write(t, filepath.Join(assets, "skills", "openspec", name, "SKILL.md"), content)
 	}
-	categories, err := catalog.Load(assets)
+	categories, err := catalog.Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	target := t.TempDir()
 	if _, err := install.ApplyInstallation(install.InstallationRequest{
-		Items: categories[0].Items, AssetsDir: assets, ConfigDir: target,
+		Items: categories[0].Items, Assets: assetfs.Directory(assets), ConfigDir: target,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +117,7 @@ func TestApplyUsesKeySpecificArrayMergeRules(t *testing.T) {
     }
   }
 }`)
-	categories, err := catalog.Load(assets)
+	categories, err := catalog.Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ func TestApplyUsesKeySpecificArrayMergeRules(t *testing.T) {
 }`)
 
 	if _, err := install.ApplyInstallation(install.InstallationRequest{
-		Items: categories[0].Items, AssetsDir: assets, ConfigDir: target,
+		Items: categories[0].Items, Assets: assetfs.Directory(assets), ConfigDir: target,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +172,7 @@ func TestApplyDoesNotReorderMatchingPlugins(t *testing.T) {
   "$schema":"https://opencode.ai/config.json",
   "plugin":["managed-plugin@latest"]
 }`)
-	categories, err := catalog.Load(assets)
+	categories, err := catalog.Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ func TestApplyDoesNotReorderMatchingPlugins(t *testing.T) {
 	write(t, configPath, original)
 
 	if _, err := install.ApplyInstallation(install.InstallationRequest{
-		Items: categories[0].Items, AssetsDir: assets, ConfigDir: target,
+		Items: categories[0].Items, Assets: assetfs.Directory(assets), ConfigDir: target,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +210,7 @@ func TestApplyMergesTUIPluginsIdempotently(t *testing.T) {
 		Extras: map[string]bool{
 			"angel-logo": true, "theme": true, "subagent-statusline": true,
 		},
-		AssetsDir: assets,
+		Assets:    assetfs.Directory(assets),
 		ConfigDir: target,
 	}
 	if _, err := install.ApplyInstallation(request); err != nil {
@@ -272,7 +273,7 @@ func TestLoadAndApply(t *testing.T) {
 	write(t, filepath.Join(assets, "skills", "my-skill", "SKILL.md"), "# skill")
 	write(t, filepath.Join(assets, "fragments", "mcp.json"), `{"mcp":{"context7":{"type":"remote"}},"plugin":["a"]}`)
 
-	categories, err := catalog.Load(assets)
+	categories, err := catalog.Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +289,7 @@ func TestLoadAndApply(t *testing.T) {
 	for _, category := range categories {
 		items = append(items, category.Items...)
 	}
-	request := install.InstallationRequest{Items: items, AssetsDir: assets, ConfigDir: target}
+	request := install.InstallationRequest{Items: items, Assets: assetfs.Directory(assets), ConfigDir: target}
 	if _, err := install.ApplyInstallation(request); err != nil {
 		t.Fatal(err)
 	}
