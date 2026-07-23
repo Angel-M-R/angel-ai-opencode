@@ -153,9 +153,13 @@ jobs:
           embedded_cwd=$(mktemp -d)
           embedded_target=$(mktemp -d)
           embedded_output="${RUNNER_TEMP}/embedded-assets-smoke.txt"
+          embedded_tools=$(mktemp -d)
+          printf '#!/bin/sh\nexit 0\n' >"${embedded_tools}/cmux"
+          chmod 0755 "${embedded_tools}/cmux"
           (
             cd "${embedded_cwd}"
-            "${artifact}" --all --dry-run --target "${embedded_target}" >"${embedded_output}"
+            env PATH="${embedded_tools}:${PATH}" \
+              "${artifact}" --all --dry-run --target "${embedded_target}" >"${embedded_output}"
           )
           test -s "${embedded_output}"
 
