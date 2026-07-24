@@ -4,7 +4,7 @@ set -u
 
 test_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 installer="$test_dir/../install.sh"
-official_manifest_url="https://github.com/angelmr/angel-ai-opencode/releases/latest/download/manifest.json"
+official_manifest_url="https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest.json"
 artifact_url="https://downloads.example.test/angel-ai"
 passed=0
 failed=0
