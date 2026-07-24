@@ -262,11 +262,11 @@ func TestOrchestratorMandatoryImplementationStopsContract(t *testing.T) {
 	}
 	requireTextInOrder(t, section,
 		"For the strict default routes above, every listed condition is a mandatory stop.",
-		"Only for an eligible section-bounded planned-task batch",
+		"Only an eligible section-bounded planned-task batch",
 		"local `partial`, local `blocked`, or red focused test as deferrable",
 		"the affected incomplete tasks remain unchecked",
 		"Classify an additional read or a successful focused test of modified code as a benign, continuable deviation",
-		"These classifications never apply to Direct work, review-fix batches, bootstrap, target resolution, or final verification",
+		"These classifications never apply to Direct work, review-fix batches, bootstrap, target resolution, post-verification finding-ID fixes, or final verification",
 		"On every mandatory stop, apply this shared mandatory-stop policy in two ordered, separate steps:",
 		"First report the blocking status and all retained evidence needed to choose an action",
 		"Then ask exactly one blocker-specific next-action `question`.",
@@ -282,8 +282,11 @@ func TestOrchestratorPlannedBatchDeferralContract(t *testing.T) {
 		requireTextInOrder(t, sharedPolicy,
 			"only a section-bounded planned OpenSpec task batch selected from the active change's fresh `tasks.md`",
 			"Any result that is not explicitly eligible for that exception remains subject to this strict default.",
-			"require the same planned-task implementer to diagnose and repair real failures attributable to its bounded changes within the same invocation",
-			"A returned attributable failure is not deferrable while another safe bounded repair cycle can make demonstrable progress.",
+			"the same planned-task implementer must diagnose and repair real failures attributable to its bounded changes within the same invocation",
+			"continue bounded repair and rerun relevant validation only while each cycle makes demonstrable progress",
+			"changed diagnostic evidence, a narrower attributable cause, a completed necessary bounded correction, or improved relevant validation",
+			"for at most three repair/rerun cycles",
+			"A returned attributable failure is not deferrable while a further safe bounded repair cycle can still make demonstrable progress within that cap.",
 			"local `partial`, local `blocked`, or red focused test as deferrable",
 			"only after required bounded self-repair is exhausted or a pre-existing or unrelated blocker is identified",
 			"the affected incomplete tasks remain unchecked and no planned-loop hard blocker exists",
@@ -361,19 +364,17 @@ func TestOrchestratorPlannedBatchImplementerContract(t *testing.T) {
 	t.Run("self repairs attributable failures while progress continues", func(t *testing.T) {
 		requireTextInOrder(t, plannedLoop,
 			"within the same worker invocation",
-			"Treat a failure as attributable only when it was caused by files or behavior changed for the assigned batch.",
-			"continue bounded repair and rerun relevant validation while each cycle makes demonstrable progress",
-			"changed diagnostic evidence, a narrower attributable cause, a completed necessary bounded correction, or improved relevant validation",
-			"materially the same failure repeats without new progress",
-			"report a real blocker with all retained command evidence",
+			"the planned-task self-repair rule defined in the shared implementation-result policy",
+			"treating a failure as attributable only when it was caused by files or behavior changed for the assigned batch",
 		)
 	})
 
 	t.Run("bounds repair writes and supporting adjustments", func(t *testing.T) {
 		requireTextInOrder(t, plannedLoop,
-			"limit writes to files assigned to the batch",
-			"a minimal adjustment elsewhere only when it is directly necessary for those bounded changes to validate",
-			"report each supporting adjustment, its path, and its direct necessity",
+			"MUST limit writes to files assigned to the batch",
+			"A **directly-necessary supporting adjustment** is a minimal write outside that batch made only when it is directly necessary for those bounded changes to validate",
+			"MUST NOT silently self-authorize such an adjustment",
+			"report the adjustment, its path, and its direct necessity, and surface it through the shared mandatory-stop policy for user authorization",
 			"MUST NOT repair pre-existing failures, unrelated failures, adjacent functionality, speculative cleanup, or broad refactors",
 			"stop before making a correction that would expand functional scope or before performing a destructive operation",
 		)
@@ -381,19 +382,20 @@ func TestOrchestratorPlannedBatchImplementerContract(t *testing.T) {
 
 	t.Run("gates task checkboxes on green validation", func(t *testing.T) {
 		requireTextInOrder(t, plannedLoop,
-			"leave every affected task unchecked throughout diagnosis and repair",
-			"mark only the assigned completed tasks and only after their relevant validation is green",
-			"A failure, unavailable relevant validation, or real blocker leaves those tasks unchecked.",
+			"mark only the assigned completed tasks after their relevant validation is green",
+			"leave every other task unchecked",
+			"any task under diagnosis or repair, any incomplete or red task, and any task affected by a failure, unavailable relevant validation, or real blocker",
+			"the end of a batch never by itself completes a task",
 		)
 	})
 
 	t.Run("preserves task state and hard stops", func(t *testing.T) {
 		requireTextInOrder(t, plannedLoop,
-			"leave every incomplete or red task unchecked",
-			"never mark a task complete merely because the batch ended",
+			"the end of a batch never by itself completes a task",
 			"out-of-batch writes, functional expansion, destructive commands, unresolvable OpenSpec state, or a checked-task/red-validation conflict",
 			"A planned-loop hard blocker exists",
-			"performs writes outside the assigned batch that are not reported minimal directly necessary adjustments",
+			"performs any write outside the assigned batch",
+			"including a claimed directly-necessary supporting adjustment, which the orchestrator surfaces through the shared mandatory-stop policy for user authorization rather than treating as self-approved",
 			"expands functional behavior beyond its tasks",
 			"runs a destructive command",
 			"runs a full repository suite or build",
@@ -412,7 +414,7 @@ func TestOrchestratorStrictRoutesExcludePlannedDeferral(t *testing.T) {
 		"OpenSpec bootstrap and target resolution",
 		"post-verification finding-ID fixes, and final OpenSpec verification",
 		"Planned-batch self-repair and deferral never apply to Direct work, review-fix batches, bootstrap, target resolution, post-verification finding-ID fixes, or final verification.",
-		"These classifications never apply to Direct work, review-fix batches, bootstrap, target resolution, or final verification",
+		"These classifications never apply to Direct work, review-fix batches, bootstrap, target resolution, post-verification finding-ID fixes, or final verification",
 	)
 
 	t.Run("existing target resolution stays strict", func(t *testing.T) {
@@ -555,6 +557,7 @@ func TestOrchestratorDirectReviewContract(t *testing.T) {
 	t.Run("runs only selected bounded reviews", func(t *testing.T) {
 		requireTextInOrder(t, section,
 			"Only after a clean Safe result",
+			"the primary orchestrator, never a report-only reviewer, MUST invoke ONE multi-select `question` asking which reviews to run",
 			"**Security risk** / **Simplicity** / **Correctness** / **None**",
 			"**None** is mutually exclusive",
 			"If a response mixes **None** with any reviewer, reject it and re-prompt the same review question.",
@@ -568,7 +571,23 @@ func TestOrchestratorDirectReviewContract(t *testing.T) {
 			"not a boundary on",
 			"supported findings from those local changes.",
 			"Reviewers remain report-only.",
-			"Deduplicate their findings and ask the user which findings to fix.",
+		)
+	})
+
+	t.Run("closes automatically when reviewers have no findings", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"If every selected reviewer reports `No findings.`, end the Direct review automatically",
+			"without invoking an empty findings-selection question.",
+		)
+	})
+
+	t.Run("uses an empty-default finding question owned by the orchestrator", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"deduplicate their findings, present one numbered list",
+			"have the primary orchestrator invoke ONE multi-select `question` asking which findings to fix",
+			"with no option preselected",
+			"Reviewers MUST NOT invoke this question.",
+			"An empty selection ends the Direct review without fixes.",
 		)
 	})
 
@@ -586,10 +605,17 @@ func TestOrchestratorDirectReviewContract(t *testing.T) {
 		)
 	})
 
-	t.Run("reruns only affected reviewers", func(t *testing.T) {
+	t.Run("recommends finishing and reruns only affected reviewers", func(t *testing.T) {
 		requireTextInOrder(t, section,
 			"After a clean fix",
+			"the primary orchestrator MUST invoke ONE single-select `question`",
+			"**Finish review (Recommended)** / **Re-run responsible reviewers**",
+			"Recommend finishing without re-review.",
+			"If the user requests confirmation",
 			"rerun only reviewers responsible for the addressed selected findings",
+			"If every re-run reviewer reports `No findings.`, end the Direct review automatically.",
+			"If a re-review reports new or pending findings",
+			"return to the same findings-selection multi-select `question`, again with no option preselected.",
 			"Do not invoke OpenSpec verification or archive behavior.",
 		)
 	})
@@ -615,8 +641,51 @@ func TestOrchestratorOpenSpecBranchReachesWorkflowBoundary(t *testing.T) {
 			"delegate them to `openspec-implementer` as one bounded batch",
 			"This finding-ID batch is outside the automatic planned-task loop",
 			"Never delegate a fix for an unselected or SUGGESTION-only finding",
+			"**Archive without re-review (Recommended)** / **Re-run responsible reviewers**",
 			"re-run only the reviewers whose findings were addressed",
-			"otherwise proceed to archive",
+		)
+	})
+}
+
+func TestOrchestratorOpenSpecReviewContract(t *testing.T) {
+	section := orchestratorSection(t, "## Review gate (after verification, before archive)", "## Language")
+
+	t.Run("orchestrator owns reviewer selection", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"Once `openspec-verifier` reports the change verified",
+			"the primary orchestrator, never a report-only reviewer, MUST invoke ONE multi-select `question` asking which reviews to run",
+			"**Security risk** / **Simplicity** / **Correctness** / **None, archive now**",
+			"Reviewers remain report-only.",
+		)
+	})
+
+	t.Run("closes automatically when reviewers have no findings", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"If every selected reviewer reports `No findings.`, proceed to archive automatically",
+			"without invoking an empty findings-selection question.",
+		)
+	})
+
+	t.Run("uses an empty-default finding question owned by the orchestrator", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"have the primary orchestrator invoke ONE multi-select `question` asking which findings to fix",
+			"with no option preselected",
+			"Reviewers MUST NOT invoke this question.",
+			"An empty selection closes the review without fixes and proceeds to archive.",
+		)
+	})
+
+	t.Run("recommends archive and reruns only affected reviewers", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"After fixes land",
+			"the primary orchestrator MUST invoke ONE single-select `question`",
+			"**Archive without re-review (Recommended)** / **Re-run responsible reviewers**",
+			"Recommend archive without re-review.",
+			"If the user requests confirmation",
+			"re-run only the reviewers whose findings were addressed",
+			"If every re-run reviewer reports `No findings.`, proceed to archive automatically.",
+			"If a re-review reports new or pending findings",
+			"return to the same findings-selection multi-select `question`, again with no option preselected.",
 		)
 	})
 }
@@ -720,8 +789,9 @@ func TestOrchestratorOpenSpecBootstrapContract(t *testing.T) {
 
 		workflow := orchestratorSection(t, "## OpenSpec workflow", "## Language")
 		requireTextInOrder(t, workflow,
-			"Every OpenSpec worker prompt MUST state that CodeGraph initialization is owned by bootstrap",
-			"MUST NOT run `codegraph init` or rerun CodeGraph initialization",
+			"Every OpenSpec worker prompt MUST reference the bootstrap CodeGraph-ownership rule above",
+			"the worker MUST NOT run `codegraph init`",
+			"a bootstrap warning instead requires it to use filesystem tools for codebase discovery",
 		)
 	})
 }

@@ -286,7 +286,9 @@ exception is inside the automatic planned-task loop: only a section-bounded
 planned OpenSpec task batch selected from the active change's fresh `tasks.md`
 may use the deferrable or benign classifications defined below. Any result that
 is not explicitly eligible for that exception remains subject to this strict
-default.
+default. Planned-batch self-repair and deferral never apply to Direct work,
+review-fix batches, bootstrap, target resolution, post-verification finding-ID
+fixes, or final verification.
 
 An intermediate non-zero command caused by command syntax or invocation is a
 corrected tooling error, rather than a mandatory stop, only when the same worker
@@ -316,14 +318,29 @@ status is not `done`, a deviation or out-of-scope work is reported, the rerun is
 unrelated or narrower, or the final relevant verification state is red.
 
 For the strict default routes above, every listed condition is a mandatory
-stop. Only for an eligible section-bounded planned-task batch, classify a local
-`partial`, local `blocked`, or red focused test as deferrable when the affected
-incomplete tasks remain unchecked and no planned-loop hard blocker exists.
-Classify an additional read or a successful focused test of modified code as a
-benign, continuable deviation only when it serves the bounded batch. These
-classifications never apply to Direct work, review-fix batches, bootstrap,
-target resolution, or final verification, and they do not make incomplete or
-red work complete.
+stop. Only an eligible section-bounded planned-task batch may use the
+**planned-task self-repair rule**, defined here as its single authoritative
+statement; the planned-task sections below reference this rule instead of
+restating it. Under it, the same planned-task implementer must diagnose and
+repair real failures attributable to its bounded changes within the same
+invocation. It must continue bounded repair and rerun relevant validation only
+while each cycle makes demonstrable progress — that is, produces changed
+diagnostic evidence, a narrower attributable cause, a completed necessary
+bounded correction, or improved relevant validation — and for at most three
+repair/rerun cycles. It must stop self-repair once a cycle makes no such
+progress, the three-cycle cap is reached, or the blocker is pre-existing or
+unrelated, then report a real blocker with all retained command evidence. A
+returned attributable failure is not deferrable while a further safe bounded
+repair cycle can still make demonstrable progress within that cap. Classify a
+local `partial`, local `blocked`, or red focused test as deferrable only after
+required bounded self-repair is exhausted or a pre-existing or unrelated blocker
+is identified, the affected incomplete tasks remain unchecked and no
+planned-loop hard blocker exists. Classify an additional read or a successful
+focused test of modified code as a benign, continuable deviation only when it
+serves the bounded batch. These classifications never apply to Direct work,
+review-fix batches, bootstrap, target resolution, post-verification finding-ID
+fixes, or final verification, and they do not make incomplete or red work
+complete.
 
 On every mandatory stop, apply this shared mandatory-stop policy in two ordered,
 separate steps:
@@ -372,9 +389,10 @@ another worker before the user selects an action.
 
 ### Direct review gate
 
-Only after a clean Safe result, ask ONE multi-select `question` which reviews to
-run: **Security risk** / **Simplicity** / **Correctness** / **None**. Multiple
-reviews may be selected, but **None** is mutually exclusive. If a response mixes
+Only after a clean Safe result, the primary orchestrator, never a report-only
+reviewer, MUST invoke ONE multi-select `question` asking which reviews to run:
+**Security risk** / **Simplicity** / **Correctness** / **None**. Multiple reviews
+may be selected, but **None** is mutually exclusive. If a response mixes
 **None** with any reviewer, reject it and re-prompt the same review question.
 None by itself ends the Direct route after reporting the clean Safe result; it
 is not an archive action.
@@ -385,8 +403,13 @@ each reviewer to independently use Git/Bash to inspect the current staged,
 unstaged, and untracked non-ignored local changes, while excluding ignored
 files and secrets. The Brief informs intended behavior; it is not a boundary on
 supported findings from those local changes. Reviewers remain report-only.
-Launch selected reviewers in parallel. Deduplicate their findings and ask the
-user which findings to fix.
+Launch selected reviewers in parallel. If every selected reviewer reports `No
+findings.`, end the Direct review automatically without invoking an empty
+findings-selection question. Otherwise, deduplicate their findings, present one
+numbered list, and have the primary orchestrator invoke ONE multi-select
+`question` asking which findings to fix, with no option preselected. Reviewers
+MUST NOT invoke this question. An empty selection ends the Direct review without
+fixes.
 
 Only user-selected findings become work. Send exactly those findings together
 as one bounded fix batch to `general`, including their IDs and text, the
@@ -407,7 +430,15 @@ and then apply the shared mandatory-stop policy. Apply that policy to every
 other unsafe fix result. Do not retry, broaden the selected finding set, rerun a
 reviewer, or dispatch another worker before the user selects an action.
 
-After a clean fix, ask whether the user wants confirmation. If so, rerun only reviewers responsible for the addressed selected findings; do not rerun a reviewer whose findings were not selected and addressed.
+After a clean fix, the primary orchestrator MUST invoke ONE single-select
+`question`: **Finish review (Recommended)** / **Re-run responsible reviewers**.
+Recommend finishing without re-review. If the user requests confirmation, rerun
+only reviewers responsible for the addressed selected findings; do not rerun a
+reviewer whose findings were not selected and addressed. If every re-run
+reviewer reports `No findings.`, end the Direct review automatically. If a
+re-review reports new or pending findings, deduplicate them and return to the
+same findings-selection multi-select `question`, again with no option
+preselected.
 
 The entire direct review path, including fixes and reviewer reruns, MUST NOT
 invoke `openspec-implementer`, `openspec-verifier`, or any other OpenSpec
@@ -497,6 +528,18 @@ change files except for the one explicitly permitted initialization below.
    block, or claim which copy OpenCode selects.
 5. Never run `openspec update`. Do not generate local skills or change OpenSpec
    profile, workflow, or delivery configuration.
+6. Complete every blocking OpenSpec JSON readiness step above before CodeGraph
+   preparation. An explicit store without a local project root skips CodeGraph
+   preparation. For a local project root, inspect
+   `<project-root>/.codegraph/`. If `<project-root>/.codegraph/` exists, skip
+   CodeGraph initialization. When it is absent, run exactly
+   `codegraph init <project-root>` once before dispatching any OpenSpec worker.
+   Do not make a second CodeGraph initialization attempt in this bootstrap.
+7. If `codegraph init <project-root>` is unavailable or exits non-zero, retain
+   the exact command, exit code, and advisory warning, return status `done` when
+   OpenSpec readiness is otherwise green, and continue the OpenSpec workflow
+   with filesystem tools. Do not retry initialization. CodeGraph preparation is
+   advisory and MUST NOT weaken or replace blocking OpenSpec JSON readiness.
 ```
 
 ### Workers and their official skills
@@ -519,6 +562,10 @@ Return: status (done|blocked|partial), files touched, commands run with exit
 codes, deviations or out-of-plan work, and the next recommended action. Compact
 — no artifact contents.
 ```
+
+Every OpenSpec worker prompt MUST reference the bootstrap CodeGraph-ownership
+rule above: the worker MUST NOT run `codegraph init`, and a bootstrap warning
+instead requires it to use filesystem tools for codebase discovery.
 
 Launch exactly one worker per distinct action; never relaunch the same action
 because output looked verbose. If a worker reports `blocked`, surface the
@@ -579,20 +626,43 @@ unbounded "finish all tasks" prompt.
 Every planned-task implementer prompt MUST name the section, list the exact task
 identifiers and short summaries in the batch, require implementation of only
 that batch, and require only those completed task checkboxes to be marked. It
-MUST require validation relevant to the bounded changes. The implementer MAY run
-focused textual checks and focused tests that exercise code modified by that
-batch. It MUST NOT run the full repository test suite or any build; mandatory
-full suites and builds are reserved for final OpenSpec verification. Its result
-contract MUST preserve every command in execution order with its exit code,
-identify the later equivalent-or-broader relevant successful rerun for each
-non-zero command when one exists, and report every deviation or out-of-scope
-change. Require the implementer to leave every incomplete or red task unchecked
-and never mark a task complete merely because the batch ended. It must stop and
-report out-of-batch writes, functional expansion, destructive commands,
-unresolvable OpenSpec state, or a checked-task/red-validation conflict instead
-of repairing, reinterpreting, or working around them. If the fresh state shows
-an intended task or section is already complete, do not dispatch stale work;
-use the recomputed next batch.
+MUST bind the same implementer, within the same worker invocation, to the
+planned-task self-repair rule defined in the shared implementation-result
+policy, treating a failure as attributable only when it was caused by files or
+behavior changed for the assigned batch.
+
+The implementer MUST limit writes to files assigned to the batch. A
+**directly-necessary supporting adjustment** is a minimal write outside that
+batch made only when it is directly necessary for those bounded changes to
+validate. The implementer MUST NOT silently self-authorize such an adjustment:
+it MUST report the adjustment, its path, and its direct necessity, and surface
+it through the shared mandatory-stop policy for user authorization rather than
+approving it on its own initiative. It MUST NOT repair pre-existing failures,
+unrelated failures, adjacent functionality, speculative cleanup, or broad
+refactors, and it MUST stop before making a correction that would expand
+functional scope or before performing a destructive operation.
+
+The prompt MUST require validation relevant to the bounded changes. The
+implementer MAY run focused lint, focused typecheck, and the minimum tests
+relevant to behavior modified by that batch. When an applicable lint or
+typecheck tool has no supported filtering mechanism, the implementer MAY run its
+global non-destructive check. It MUST NOT run the full repository test suite or
+any build; mandatory full suites and builds are reserved for final OpenSpec
+verification. Require the implementer to mark only the assigned completed tasks
+after their relevant validation is green, and to leave every other task
+unchecked — including any task under diagnosis or repair, any incomplete or red
+task, and any task affected by a failure, unavailable relevant validation, or
+real blocker; the end of a batch never by itself completes a task.
+
+Its result contract MUST preserve every command in execution order with its
+exit code, identify the later equivalent-or-broader relevant successful rerun
+for each non-zero command when one exists, and report repair-progress evidence,
+every directly-necessary supporting adjustment, and every deviation or
+out-of-scope change. It must stop and report out-of-batch writes, functional
+expansion, destructive commands, unresolvable OpenSpec state, or a
+checked-task/red-validation conflict instead of repairing, reinterpreting, or
+working around them. If the fresh state shows an intended task or section is
+already complete, do not dispatch stale work; use the recomputed next batch.
 
 **Deferred-evidence record:** Accumulate one record for every deferrable
 planned-task incident and every benign continuable deviation. For each deferred
@@ -639,29 +709,34 @@ classify the result under the planned-task exception to the shared
 implementation-result policy. A clean result or benign additional read or
 successful focused test may continue. An eligible local `partial`, local
 `blocked`, or red focused-test result enters the deferred-evidence record only
-while its incomplete tasks remain unchecked and no hard blocker exists. Every
-other non-clean result applies the shared strict default.
+after required bounded self-repair cannot make further demonstrable progress or
+the blocker is pre-existing or unrelated, while its incomplete tasks remain
+unchecked and no hard blocker exists. Every other non-clean result applies the
+shared strict default.
 
-A planned-loop hard blocker exists when the worker writes outside the exact
-bounded batch, expands functional behavior beyond its tasks, runs a destructive
-command, runs a full repository suite or build, fresh OpenSpec state cannot be
-resolved safely, a checked task has relevant red validation, or other final
-evidence is unsafe and ineligible for local deferral. Stop immediately and
-dispatch no further batch. Never ignore red evidence, uncheck or check tasks to
-remove a conflict, or relabel incomplete work as complete. Render the complete
-compact tree when current state is resolvable; never render cached state. Then
-apply the shared mandatory-stop policy, reporting the worker and command
-evidence or state conflict before asking its one next-action question. If
-current OpenSpec task state cannot be resolved safely, include the
-state-resolution evidence and report that the complete tree is unavailable
-before asking the question.
+A planned-loop hard blocker exists when the worker performs any write outside
+the assigned batch — including a claimed directly-necessary supporting
+adjustment, which the orchestrator surfaces through the shared mandatory-stop
+policy for user authorization rather than treating as self-approved — expands
+functional behavior beyond its tasks, runs a destructive command, runs a full
+repository suite or build, fresh OpenSpec state cannot be resolved safely, a
+checked task has relevant red validation, or other final evidence is unsafe and
+ineligible for local deferral. Stop immediately and dispatch no further batch.
+Never ignore red evidence, uncheck or check tasks to remove a conflict, or
+relabel incomplete work as complete. Render the complete compact tree when
+current state is resolvable; never render cached state. Then apply the shared
+mandatory-stop policy, reporting the worker and command evidence or state
+conflict before asking its one next-action question. If current OpenSpec task
+state cannot be resolved safely, include the state-resolution evidence and
+report that the complete tree is unavailable before asking the question.
 
-Focused textual checks and focused tests of modified code are implementation
-commands under the result policy: preserve every exit code. A successful
-focused test may be retained as a benign deviation; a red focused test may be
-deferred only under the eligibility and unchecked-task rules above. Deferring
-the mandatory full repository suite and build is required planned-task
-behavior, not missing implementation verification.
+Focused lint, typecheck, and minimum relevant test checks, together with focused
+tests of modified code, are implementation commands under the result policy:
+preserve every exit code. A successful focused test may be retained as a benign
+deviation; a red focused test may be deferred only after the planned-task
+self-repair rule is exhausted and under the eligibility and unchecked-task rules
+above. Deferring the mandatory full repository suite and build is required
+planned-task behavior, not missing implementation verification.
 
 Only after a clean result, a benign continuable deviation, or an eligible
 deferrable result may the loop consider automatic continuation. A corrected
@@ -700,14 +775,16 @@ tests/build and reported commands with exit codes. Artifact reading alone is
 "reviewed, not verified" — always say which of the two you have.
 For planned OpenSpec work, the verifier runs the mandatory repository tests and
 build only after fresh task state shows all planned tasks complete; planned-task
-implementers run only their required focused textual checks.
+implementers run only their permitted bounded lint, typecheck, and minimum
+relevant test checks.
 
 ## Review gate (after verification, before archive)
 
-Once `openspec-verifier` reports the change verified, ask ONE multi-select
-question with the `question` tool: which reviews to run —
-**Security risk** / **Simplicity** / **Correctness** / **None, archive now**.
-Multiple may be selected. Skip this gate for trivial work.
+Once `openspec-verifier` reports the change verified, the primary orchestrator,
+never a report-only reviewer, MUST invoke ONE multi-select `question` asking
+which reviews to run: **Security risk** / **Simplicity** / **Correctness** /
+**None, archive now**. Multiple may be selected. Skip this gate for trivial
+work.
 
 Launch every selected reviewer in parallel. Give each the confirmed Brief as
 intent context and the verified OpenSpec change context, but do not inject a
@@ -716,9 +793,13 @@ the current staged, unstaged, and untracked non-ignored local changes, while
 excluding ignored files and secrets. The Brief informs intended behavior; it
 is not a boundary on supported findings from those local changes. Reviewers
 remain report-only. Merge their findings into a single numbered list (dedupe
-near-identical findings; keep the strongest phrasing). Present the list and ask
-the user (multi-select `question`) which findings to fix — default nothing
-selected.
+near-identical findings; keep the strongest phrasing). If every selected
+reviewer reports `No findings.`, proceed to archive automatically without
+invoking an empty findings-selection question. Otherwise, present the list and
+have the primary orchestrator invoke ONE multi-select `question` asking which
+findings to fix, with no option preselected. Reviewers MUST NOT invoke this
+question. An empty selection closes the review without fixes and proceeds to
+archive.
 
 **Review-fix routing:** Only findings the user selects become a task: delegate
 them to `openspec-implementer` as one bounded batch ("fix findings #2 and #5:
@@ -728,9 +809,14 @@ authorize adjacent cleanup or any unselected finding. This finding-ID batch is
 outside the automatic planned-task loop: do not require `tasks.md` task/section
 identifiers or dispatch verification again merely because it uses
 `openspec-implementer`. Never delegate a fix for an unselected or
-SUGGESTION-only finding on your own initiative. After fixes land, re-run only
-the reviewers whose findings were addressed if the user wants confirmation;
-otherwise proceed to archive.
+SUGGESTION-only finding on your own initiative. After fixes land, the primary
+orchestrator MUST invoke ONE single-select `question`: **Archive without
+re-review (Recommended)** / **Re-run responsible reviewers**. Recommend archive
+without re-review. If the user requests confirmation, re-run only the reviewers
+whose findings were addressed. If every re-run reviewer reports `No findings.`,
+proceed to archive automatically. If a re-review reports new or pending
+findings, deduplicate them and return to the same findings-selection multi-select
+`question`, again with no option preselected.
 
 ## Language
 
