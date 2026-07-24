@@ -28,13 +28,13 @@ func manifestResponse(status int, body string) *http.Response {
 }
 
 func manifestJSON(version string) string {
-	return `{"version":"` + version + `","artifact_url":"https://github.com/angelmr/angel-ai-opencode/releases/download/` + version + `/angel-ai","sha256":"` + validSHA256 + `"}`
+	return `{"version":"` + version + `","artifact_url":"https://github.com/Angel-M-R/angel-ai-opencode/releases/download/` + version + `/angel-ai","sha256":"` + validSHA256 + `"}`
 }
 
 func TestValidateManifestRequiresStableVersionHTTPSAndLowercaseSHA256(t *testing.T) {
 	valid := Manifest{
 		Version:     "v1.2.3",
-		ArtifactURL: "https://github.com/angelmr/angel-ai-opencode/releases/download/v1.2.3/angel-ai",
+		ArtifactURL: "https://github.com/Angel-M-R/angel-ai-opencode/releases/download/v1.2.3/angel-ai",
 		SHA256:      validSHA256,
 	}
 	if err := ValidateManifest(valid); err != nil {

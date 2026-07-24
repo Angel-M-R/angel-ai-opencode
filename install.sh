@@ -2,7 +2,7 @@
 
 set -eu
 
-manifest_url="https://github.com/angelmr/angel-ai-opencode/releases/latest/download/manifest.json"
+manifest_url="https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest.json"
 install_dir="$HOME/.local/bin"
 install_path="$install_dir/angel-ai"
 manifest_temp=""

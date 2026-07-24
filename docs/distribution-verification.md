@@ -177,7 +177,7 @@ URL so the command's complete input set remains deterministic.
 
 ```bash
 export ONE_LINE_INSTALLER_URL="https://raw.githubusercontent.com/Angel-M-R/angel-ai-opencode/main/install.sh"
-export LATEST_MANIFEST_URL="https://github.com/angelmr/angel-ai-opencode/releases/latest/download/manifest.json"
+export LATEST_MANIFEST_URL="https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest.json"
 export RC_ROOT=$(mktemp -d "$EVIDENCE_ROOT/release-candidate/work.XXXXXX")
 export RC_HOME="$RC_ROOT/home"
 export RC_SHIMS="$RC_ROOT/shims"

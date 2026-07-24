@@ -12,7 +12,7 @@ import (
 const (
 	// LatestManifestURL points directly at the manifest asset on the latest
 	// GitHub Release and does not use the GitHub API.
-	LatestManifestURL = "https://github.com/angelmr/angel-ai-opencode/releases/latest/download/manifest.json"
+	LatestManifestURL = "https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest.json"
 	RequestTimeout    = 2 * time.Second
 )
 
