@@ -2,7 +2,6 @@
 description: "OpenSpec verification worker — read-only check of an implementation against its artifacts, with real test execution"
 mode: "subagent"
 hidden: true
-variant: "high"
 tools:
   bash: true
   edit: false

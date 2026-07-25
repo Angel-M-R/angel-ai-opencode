@@ -2,7 +2,6 @@
 description: "Security and data-integrity reviewer — evaluates only the categories the diff actually touches. Read-only."
 mode: "subagent"
 hidden: true
-variant: "high"
 tools:
   bash: true
   edit: false

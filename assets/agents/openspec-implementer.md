@@ -2,7 +2,6 @@
 description: "OpenSpec implementation worker — implements pending tasks in bounded batches via the official apply skill"
 mode: "subagent"
 hidden: true
-variant: "xhigh"
 tools:
   bash: true
   edit: true

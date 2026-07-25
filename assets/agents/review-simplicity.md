@@ -2,7 +2,6 @@
 description: "Simplicity reviewer — flags overengineering, unnecessary abstraction, dead/duplicated code, comment noise, reinvented utilities, and excess tests. Read-only."
 mode: "subagent"
 hidden: true
-variant: "high"
 tools:
   bash: true
   edit: false

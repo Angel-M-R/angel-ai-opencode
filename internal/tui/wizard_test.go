@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
 	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
+	"angel-ai-opencode/internal/install"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -872,5 +874,155 @@ func TestCMUXSelectionDefaultsAndExplicitSelection(t *testing.T) {
 	model = updated.(Model)
 	if !model.chosenExtras()["cmux"] {
 		t.Fatal("explicit cmux selection was not included in chosen extras")
+	}
+}
+
+func agentModelsModel(t *testing.T, configDir string, agents ...string) Model {
+	t.Helper()
+
+	items := make([]catalog.Item, len(agents))
+	for index, name := range agents {
+		items[index] = catalog.Item{Name: name, Source: name + ".md", Dest: "agents/" + name + ".md"}
+	}
+	model := New([]catalog.Category{{Name: "agents", Title: "Agentes", Items: items}},
+		assetfs.Directory(t.TempDir()), configDir)
+	model.extras = nil
+	model.extraSelected = nil
+	model.asyncFlow = false
+	model.catalogLoaded = true
+	model.catalogAvailable = true
+	model.modelCatalog = []install.ProviderOption{
+		{ID: "anthropic", Name: "Anthropic", Models: []install.ModelOption{
+			{ID: "claude-flat", Name: "Claude Flat"},
+			{ID: "claude-sonnet", Name: "Claude Sonnet", Efforts: []string{"low", "high"}},
+		}},
+		{ID: "openai", Name: "OpenAI", Models: []install.ModelOption{
+			{ID: "gpt-5", Name: "GPT-5", Efforts: []string{"low", "medium", "high"}},
+		}},
+	}
+	return model
+}
+
+func enterAgentModelsStep(t *testing.T, model Model) Model {
+	t.Helper()
+
+	if !model.enterAgentModels() {
+		t.Fatal("per-agent model step was not offered")
+	}
+	return model
+}
+
+func pressAgentModelsKeys(t *testing.T, model Model, keys ...string) Model {
+	t.Helper()
+
+	for _, key := range keys {
+		updated, _ := model.updateAgentModels(key)
+		next, ok := updated.(Model)
+		if !ok {
+			t.Fatalf("updated model type = %T, want tui.Model", updated)
+		}
+		model = next
+	}
+	return model
+}
+
+func TestAgentModelStepIsReDecidedOnEveryEntry(t *testing.T) {
+	model := agentModelsModel(t, t.TempDir(), "angel-orchestrator", "review-simplicity")
+
+	for index := range model.selected[0] {
+		model.selected[0][index] = false
+	}
+	if model.enterAgentModels() {
+		t.Fatal("step was offered with no agent selected")
+	}
+
+	model.selected[0][1] = true
+	model = enterAgentModelsStep(t, model)
+	if want := []string{"review-simplicity"}; !slices.Equal(model.agentNames, want) {
+		t.Fatalf("assignable agents = %v, want %v", model.agentNames, want)
+	}
+}
+
+func TestDeselectingAnAssignedAgentDropsItsAssignment(t *testing.T) {
+	model := enterAgentModelsStep(t, agentModelsModel(t, t.TempDir(), "angel-orchestrator"))
+	model = pressAgentModelsKeys(t, model, "enter", "enter", "enter")
+
+	if _, ok := model.agentModelAssignments()["angel-orchestrator"]; !ok {
+		t.Fatalf("assignment missing: %v", model.agentModelAssignments())
+	}
+	model.selected[0][0] = false
+	if got := model.agentModelAssignments(); got != nil {
+		t.Fatalf("deselected agent still assigned: %v", got)
+	}
+}
+
+func TestSkippingTheStepWritesNoPreloadedAssignment(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "opencode.json"),
+		[]byte(`{"agent":{"angel-orchestrator":{"model":"openai/gpt-5","variant":"medium"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	model := enterAgentModelsStep(t, agentModelsModel(t, configDir, "angel-orchestrator"))
+	if !strings.Contains(model.View(), "openai/gpt-5") {
+		t.Fatalf("preloaded assignment is not displayed:\n%s", model.View())
+	}
+	model = pressAgentModelsKeys(t, model, "s")
+	if got := model.agentModelAssignments(); got != nil {
+		t.Fatalf("skipped step still writes %v", got)
+	}
+}
+
+func TestPreloadedSelectionOpensOnItsModelAndEffort(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "opencode.json"),
+		[]byte(`{"agent":{"angel-orchestrator":{"model":"anthropic/claude-sonnet","variant":"high"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	model := enterAgentModelsStep(t, agentModelsModel(t, configDir, "angel-orchestrator"))
+	model = pressAgentModelsKeys(t, model, "enter", "enter")
+	if model.agentModelsLevel != modelLevel || model.modelCursor != 1 {
+		t.Fatalf("model cursor = %d at level %d, want 1 at the model level", model.modelCursor, model.agentModelsLevel)
+	}
+	model = pressAgentModelsKeys(t, model, "enter")
+	if model.agentModelsLevel != effortLevel || model.effortCursor != 1 {
+		t.Fatalf("effort cursor = %d at level %d, want 1 at the effort level", model.effortCursor, model.agentModelsLevel)
+	}
+}
+
+func TestAssignmentCanBeClearedFromTheAgentList(t *testing.T) {
+	model := enterAgentModelsStep(t, agentModelsModel(t, t.TempDir(), "angel-orchestrator"))
+	model = pressAgentModelsKeys(t, model, "enter", "enter", "enter")
+	model = pressAgentModelsKeys(t, model, "n")
+
+	if got := model.agentModelAssignments(); got != nil {
+		t.Fatalf("cleared agent still assigned: %v", got)
+	}
+	view := model.View()
+	if !strings.Contains(view, "sin asignar") || !strings.Contains(view, "n quitar asignación") {
+		t.Fatalf("cleared state or its control is not shown:\n%s", view)
+	}
+}
+
+func TestAgentModelListWindowsToTheTerminalAndFollowsTheCursor(t *testing.T) {
+	agents := install.ConfigurableAgents()
+	model := enterAgentModelsStep(t, agentModelsModel(t, t.TempDir(), agents...))
+	model = resizeModel(t, model, model.agentModelsChromeHeight()+2)
+
+	view := model.View()
+	if strings.Contains(view, agents[len(agents)-1]) {
+		t.Fatalf("overflowing list rendered every row:\n%s", view)
+	}
+	if !strings.Contains(view, fmt.Sprintf("Mostrando 1-1 de %d", len(agents))) {
+		t.Fatalf("scroll feedback missing:\n%s", view)
+	}
+
+	for range agents {
+		model = pressAgentModelsKeys(t, model, "down")
+	}
+	view = model.View()
+	if !strings.Contains(view, agents[len(agents)-1]) {
+		t.Fatalf("cursor row is not reachable:\n%s", view)
 	}
 }

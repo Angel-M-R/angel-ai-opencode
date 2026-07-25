@@ -690,6 +690,33 @@ func TestOrchestratorOpenSpecReviewContract(t *testing.T) {
 	})
 }
 
+func TestOrchestratorArchivesSingleChangesInline(t *testing.T) {
+	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
+	requireTextInOrder(t, orchestrator,
+		"Archive one named OpenSpec change after authorization",
+		"Yes",
+		"primary orchestrator via `openspec-archive-change`",
+		"Bulk archive OpenSpec changes",
+		"No",
+		"`openspec-planner`",
+	)
+
+	section := orchestratorSection(t, "### Inline single-change archive", "### Planned-task implementation state")
+	requireTextInOrder(t, section,
+		"Archiving one named change is a bounded lifecycle control action, not planned implementation.",
+		"the primary orchestrator MUST load and invoke `openspec-archive-change` itself",
+		"Do not dispatch `openspec-planner` or `general` solely to perform that archive.",
+		"The primary orchestrator owns every question required by the archive skill.",
+		"If the user chooses to sync delta specs, delegate only that sync to `openspec-planner` with `openspec-sync-specs`",
+		"resume the archive inline after a clean sync result.",
+	)
+
+	planner := readRepositoryAsset(t, "agents", "openspec-planner.md")
+	if strings.Contains(planner, "`openspec-archive-change`") {
+		t.Fatal("single-change archive must stay in the primary orchestrator")
+	}
+}
+
 func TestOrchestratorOpenSpecBootstrapContract(t *testing.T) {
 	section := orchestratorBootstrapSection(t)
 
@@ -835,6 +862,23 @@ func TestVendoredOpenSpecAgentAssetsRemainPreserved(t *testing.T) {
 		if !strings.Contains(string(content), "generatedBy: \"1.6.0\"") {
 			t.Errorf("%s lost its vendored generatedBy contract", name)
 		}
+	}
+}
+
+func TestConfigurableAgentAssetsDeclareNoVariant(t *testing.T) {
+	for _, name := range ConfigurableAgents() {
+		t.Run(name, func(t *testing.T) {
+			asset := readRepositoryAsset(t, "agents", name+".md")
+			frontmatter, _, found := strings.Cut(strings.TrimPrefix(asset, "---\n"), "---\n")
+			if !found {
+				t.Fatal("agent frontmatter is missing")
+			}
+			for _, line := range strings.Split(frontmatter, "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "variant:") {
+					t.Errorf("frontmatter still declares a variant: %q", strings.TrimSpace(line))
+				}
+			}
+		})
 	}
 }
 

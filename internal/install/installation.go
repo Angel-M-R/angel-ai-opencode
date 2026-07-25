@@ -24,6 +24,10 @@ type InstallationRequest struct {
 	Extras    map[string]bool
 	Assets    assets.Source
 	ConfigDir string
+	// AgentModels are the per-agent model and reasoning effort choices. A nil
+	// or empty map writes nothing, which is what the non-interactive path
+	// passes.
+	AgentModels AgentModelAssignments
 }
 
 type preparedFile struct {
@@ -148,6 +152,10 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 			}
 			prepared.files = append(prepared.files, file)
 		}
+	}
+
+	if patch, ok := agentModelsPatch(request.AgentModels); ok {
+		fragments = append(fragments, patch)
 	}
 
 	codegraphSelected, codegraphSpecified := request.Extras[codegraphOptionKey]

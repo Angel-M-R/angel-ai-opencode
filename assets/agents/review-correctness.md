@@ -2,7 +2,6 @@
 description: "Correctness reviewer — logic defects, edge cases, error handling, and type invariants in the changed code. Read-only."
 mode: "subagent"
 hidden: true
-variant: "high"
 tools:
   bash: true
   edit: false

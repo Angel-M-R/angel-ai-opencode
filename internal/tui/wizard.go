@@ -69,11 +69,28 @@ type phase int
 const (
 	selecting phase = iota
 	extrasPhase
+	agentModelsPhase
 	analyzing
 	confirming
 	installing
 	finished
 )
+
+// agentModelsLevel is the depth of the per-agent model drill-down: the agent
+// list, then provider, then model, then reasoning effort.
+type agentModelsLevel int
+
+const (
+	agentLevel agentModelsLevel = iota
+	providerLevel
+	modelLevel
+	effortLevel
+)
+
+// agentsCategoryName is the catalog category whose selection gates the
+// per-agent model step: assigning a model to an agent that is not being
+// installed would be meaningless.
+const agentsCategoryName = "agents"
 
 type spinnerTickMsg struct{}
 
@@ -96,6 +113,36 @@ type Model struct {
 
 	assets    assets.Source
 	configDir string
+
+	// agentModelsOffered records whether the per-agent model step applied the
+	// last time it was evaluated; it is false when the catalog is unavailable
+	// or no agent is being installed, and the wizard then keeps its previous
+	// sequence. Only the catalog load and the preloaded selections are cached
+	// across entries — whether to offer the step is re-decided every time,
+	// because the agent selection can change between entries.
+	agentModelsOffered bool
+	catalogLoaded      bool
+	catalogAvailable   bool
+	modelCatalog       []install.ProviderOption
+	selectionsLoaded   bool
+	agentNames         []string
+	agentSelections    map[string]install.AgentModelSelection
+	// agentAssigned marks the agents the user assigned during this run.
+	// Selections merely preloaded from opencode.json are displayed but never
+	// written back, so skipping the step writes neither model nor variant.
+	agentAssigned    map[string]bool
+	agentModelsLevel agentModelsLevel
+	agentCursor      int
+	providerCursor   int
+	modelCursor      int
+	effortCursor     int
+	// modelCursorProvider and the effortCursor* fields record which parent
+	// selection the child cursor was resolved for, so drilling back into an
+	// unchanged parent keeps the cursor instead of resetting it.
+	modelCursorProvider  int
+	effortCursorProvider int
+	effortCursorModel    int
+	agentModelsOffset    int
 
 	phase  phase
 	step   int
@@ -200,6 +247,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		switch m.phase {
+		case agentModelsPhase:
+			lines := m.agentModelsRows()
+			rows := listVisualRows(lines, m.width)
+			height := m.agentModelsListHeight(len(rows))
+			if oldWidth != m.width {
+				m.agentModelsOffset = resizeListOffset(lines, m.agentModelsOffset, oldWidth, m.width, height)
+			} else {
+				m.agentModelsOffset = clampListOffset(m.agentModelsOffset, len(rows), height)
+			}
+			m.followAgentModelsCursor()
 		case confirming:
 			rows := listVisualRows(m.confirmationPlan, m.width)
 			height := m.confirmationListHeight(len(rows))
@@ -228,6 +285,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateSelecting(key)
 		case extrasPhase:
 			return m.updateExtras(key)
+		case agentModelsPhase:
+			return m.updateAgentModels(key)
 		case confirming:
 			return m.updateConfirming(key)
 		case finished:
@@ -270,7 +329,7 @@ func (m Model) updateSelecting(key string) (tea.Model, tea.Cmd) {
 		} else if len(m.extras) > 0 {
 			m.phase = extrasPhase
 			m.cursor = 0
-		} else {
+		} else if !m.enterAgentModels() {
 			return m, m.proceedToConfirmation()
 		}
 	}
@@ -302,9 +361,287 @@ func (m Model) updateExtras(key string) (tea.Model, tea.Cmd) {
 		m.step = len(m.categories) - 1
 		m.cursor = 0
 	case "enter", "right", "l":
-		return m, m.proceedToConfirmation()
+		if !m.enterAgentModels() {
+			return m, m.proceedToConfirmation()
+		}
 	}
 	return m, nil
+}
+
+// enterAgentModels decides whether the per-agent model step applies and enters
+// it when it does. The decision is taken afresh on every entry because it
+// depends on which agents are currently selected; only the catalog read and
+// the selections preloaded from opencode.json are cached across entries.
+func (m *Model) enterAgentModels() bool {
+	m.agentModelsOffered = false
+	m.agentNames = m.selectedAgentNames()
+	if len(m.agentNames) == 0 {
+		return false
+	}
+	if !m.catalogLoaded {
+		m.catalogLoaded = true
+		m.modelCatalog, m.catalogAvailable = install.LoadModelCatalog(install.DefaultModelCatalogPaths())
+	}
+	if !m.catalogAvailable {
+		return false
+	}
+	if !m.selectionsLoaded {
+		m.selectionsLoaded = true
+		m.agentSelections = install.LoadAgentModelSelections(m.configDir)
+		if m.agentSelections == nil {
+			m.agentSelections = map[string]install.AgentModelSelection{}
+		}
+		m.agentAssigned = map[string]bool{}
+	}
+	m.agentCursor = 0
+	m.agentModelsOffset = 0
+	m.agentModelsLevel = agentLevel
+	m.agentModelsOffered = true
+	m.phase = agentModelsPhase
+	return true
+}
+
+// selectedAgentNames are the configurable agents whose asset is actually being
+// installed, in presentation order. Assigning a model to an agent that is not
+// installed would write configuration for a file that does not exist.
+func (m Model) selectedAgentNames() []string {
+	installed := map[string]bool{}
+	for i, category := range m.categories {
+		if category.Name != agentsCategoryName {
+			continue
+		}
+		for j, item := range category.Items {
+			if m.selected[i][j] {
+				installed[item.Name] = true
+			}
+		}
+	}
+	var names []string
+	for _, name := range install.ConfigurableAgents() {
+		if installed[name] {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (m Model) currentProvider() (install.ProviderOption, bool) {
+	if m.providerCursor < 0 || m.providerCursor >= len(m.modelCatalog) {
+		return install.ProviderOption{}, false
+	}
+	return m.modelCatalog[m.providerCursor], true
+}
+
+func (m Model) currentModel() (install.ModelOption, bool) {
+	provider, ok := m.currentProvider()
+	if !ok || m.modelCursor < 0 || m.modelCursor >= len(provider.Models) {
+		return install.ModelOption{}, false
+	}
+	return provider.Models[m.modelCursor], true
+}
+
+func (m Model) agentModelsRowCount() int {
+	return len(m.agentModelsRows())
+}
+
+func (m Model) agentModelsCursorValue() int {
+	return *m.agentModelsCursor()
+}
+
+func (m *Model) agentModelsCursor() *int {
+	switch m.agentModelsLevel {
+	case providerLevel:
+		return &m.providerCursor
+	case modelLevel:
+		return &m.modelCursor
+	case effortLevel:
+		return &m.effortCursor
+	default:
+		return &m.agentCursor
+	}
+}
+
+// openProviderLevel drills into the provider list for the highlighted agent,
+// starting on that agent's existing assignment when it has one.
+func (m *Model) openProviderLevel() {
+	m.providerCursor = 0
+	m.modelCursor = 0
+	m.effortCursor = 0
+	if selection, ok := m.agentSelections[m.currentAgentName()]; ok {
+		for i, provider := range m.modelCatalog {
+			if provider.ID != selection.Provider {
+				continue
+			}
+			m.providerCursor = i
+			for j, model := range provider.Models {
+				if model.ID != selection.Model {
+					continue
+				}
+				m.modelCursor = j
+				if effort := slices.Index(model.Efforts, selection.Effort); effort > 0 {
+					m.effortCursor = effort
+				}
+			}
+			break
+		}
+	}
+	m.modelCursorProvider = m.providerCursor
+	m.effortCursorProvider = m.providerCursor
+	m.effortCursorModel = m.modelCursor
+	m.agentModelsLevel = providerLevel
+	m.agentModelsOffset = 0
+}
+
+// assignCurrent records the highlighted provider/model pair for the
+// highlighted agent and returns to the agent list.
+func (m *Model) assignCurrent(effort string) {
+	provider, providerOK := m.currentProvider()
+	model, modelOK := m.currentModel()
+	if name := m.currentAgentName(); providerOK && modelOK && name != "" {
+		m.agentSelections[name] = install.AgentModelSelection{
+			Provider: provider.ID,
+			Model:    model.ID,
+			Effort:   effort,
+		}
+		m.agentAssigned[name] = true
+	}
+	m.returnToAgentLevel()
+}
+
+// clearCurrentAssignment drops the highlighted agent's assignment so nothing
+// is written for it.
+func (m *Model) clearCurrentAssignment() {
+	name := m.currentAgentName()
+	if name == "" {
+		return
+	}
+	delete(m.agentSelections, name)
+	delete(m.agentAssigned, name)
+}
+
+func (m *Model) returnToAgentLevel() {
+	m.agentModelsLevel = agentLevel
+	m.agentModelsOffset = 0
+	m.followAgentModelsCursor()
+}
+
+// leaveAgentModels goes back to whichever step preceded this one.
+func (m *Model) leaveAgentModels() {
+	if len(m.extras) > 0 {
+		m.phase = extrasPhase
+	} else {
+		m.phase = selecting
+		m.step = len(m.categories) - 1
+	}
+	m.cursor = 0
+}
+
+func (m Model) updateAgentModels(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "up", "k":
+		cursor := m.agentModelsCursor()
+		if *cursor > 0 {
+			*cursor--
+		}
+		m.followAgentModelsCursor()
+	case "down", "j":
+		cursor := m.agentModelsCursor()
+		if *cursor < m.agentModelsRowCount()-1 {
+			*cursor++
+		}
+		m.followAgentModelsCursor()
+	case "n":
+		if m.agentModelsLevel == agentLevel {
+			m.clearCurrentAssignment()
+		}
+	case "s":
+		switch m.agentModelsLevel {
+		case agentLevel:
+			return m, m.proceedToConfirmation()
+		case effortLevel:
+			m.assignCurrent("")
+		default:
+			m.returnToAgentLevel()
+		}
+	case "left", "h", "b":
+		switch m.agentModelsLevel {
+		case agentLevel:
+			m.leaveAgentModels()
+		case providerLevel:
+			m.returnToAgentLevel()
+		case modelLevel:
+			m.agentModelsLevel = providerLevel
+			m.agentModelsOffset = 0
+			m.followAgentModelsCursor()
+		case effortLevel:
+			m.agentModelsLevel = modelLevel
+			m.agentModelsOffset = 0
+			m.followAgentModelsCursor()
+		}
+	case "enter", "right", "l":
+		switch m.agentModelsLevel {
+		case agentLevel:
+			m.openProviderLevel()
+			m.followAgentModelsCursor()
+		case providerLevel:
+			if _, ok := m.currentProvider(); ok {
+				if m.providerCursor != m.modelCursorProvider {
+					m.modelCursor = 0
+					m.modelCursorProvider = m.providerCursor
+				}
+				m.agentModelsLevel = modelLevel
+				m.agentModelsOffset = 0
+				m.followAgentModelsCursor()
+			}
+		case modelLevel:
+			model, ok := m.currentModel()
+			if !ok {
+				break
+			}
+			if len(model.Efforts) == 0 {
+				m.assignCurrent("")
+				break
+			}
+			if m.providerCursor != m.effortCursorProvider || m.modelCursor != m.effortCursorModel {
+				m.effortCursor = 0
+				m.effortCursorProvider = m.providerCursor
+				m.effortCursorModel = m.modelCursor
+			}
+			if m.effortCursor >= len(model.Efforts) {
+				m.effortCursor = 0
+			}
+			m.agentModelsLevel = effortLevel
+			m.agentModelsOffset = 0
+			m.followAgentModelsCursor()
+		case effortLevel:
+			model, ok := m.currentModel()
+			if !ok || m.effortCursor < 0 || m.effortCursor >= len(model.Efforts) {
+				break
+			}
+			m.assignCurrent(model.Efforts[m.effortCursor])
+		}
+	}
+	return m, nil
+}
+
+// agentModelAssignments renders the selections in the shape the installer
+// writes. Only agents assigned during this run and still selected for
+// installation are emitted, so skipping the step — or deselecting an agent
+// after assigning it — writes neither model nor variant.
+func (m Model) agentModelAssignments() install.AgentModelAssignments {
+	assignments := install.AgentModelAssignments{}
+	for _, name := range m.selectedAgentNames() {
+		if !m.agentAssigned[name] {
+			continue
+		}
+		if selection, ok := m.agentSelections[name]; ok {
+			assignments[name] = selection.Assignment()
+		}
+	}
+	if len(assignments) == 0 {
+		return nil
+	}
+	return assignments
 }
 
 func spinnerTick() tea.Cmd {
@@ -342,6 +679,7 @@ func (m *Model) enterConfirmation() {
 func (m Model) installationPlan() []string {
 	plan, err := install.PlanInstallation(install.InstallationRequest{
 		Items: m.chosen(), Extras: m.chosenExtras(), Assets: m.assets, ConfigDir: m.configDir,
+		AgentModels: m.agentModelAssignments(),
 	})
 	if err != nil {
 		return []string{"ERROR      " + err.Error()}
@@ -458,10 +796,12 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "left", "h", "b", "esc":
-		if len(m.extras) > 0 {
+		switch {
+		case m.enterAgentModels():
+		case len(m.extras) > 0:
 			m.phase = extrasPhase
 			m.cursor = 0
-		} else {
+		default:
 			m.phase = selecting
 			m.step = len(m.categories) - 1
 			m.cursor = 0
@@ -478,7 +818,7 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 		}
 		items := m.chosen()
 		extras := m.chosenExtras()
-		return m, installCmd(items, extras, m.assets, m.configDir)
+		return m, installCmd(items, extras, m.agentModelAssignments(), m.assets, m.configDir)
 	}
 	return m, nil
 }
@@ -486,14 +826,21 @@ func (m Model) updateConfirming(key string) (tea.Model, tea.Cmd) {
 func (m Model) startInstallation() (tea.Model, tea.Cmd) {
 	m.phase = installing
 	m.spinnerFrame = 0
-	cmd := installCmd(m.chosen(), m.chosenExtras(), m.assets, m.configDir)
+	cmd := installCmd(m.chosen(), m.chosenExtras(), m.agentModelAssignments(), m.assets, m.configDir)
 	return m, tea.Batch(cmd, spinnerTick())
 }
 
-func installCmd(items []catalog.Item, extras map[string]bool, assetSource assets.Source, configDir string) tea.Cmd {
+func installCmd(
+	items []catalog.Item,
+	extras map[string]bool,
+	agentModels install.AgentModelAssignments,
+	assetSource assets.Source,
+	configDir string,
+) tea.Cmd {
 	return func() tea.Msg {
 		report, err := install.ApplyInstallation(install.InstallationRequest{
 			Items: items, Extras: extras, Assets: assetSource, ConfigDir: configDir,
+			AgentModels: agentModels,
 		})
 		return installedMsg{report: report, err: err}
 	}
@@ -553,6 +900,8 @@ func (m Model) View() string {
 			b.WriteString("       " + helpStyle.Render(extra.Description) + "\n")
 		}
 		b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
+	case agentModelsPhase:
+		b.WriteString(m.agentModelsView())
 	case analyzing:
 		b.WriteString(m.loadingView("Analizando archivos…"))
 	case confirming:
@@ -575,6 +924,164 @@ func (m Model) View() string {
 		b.WriteString(resultFooter(listRangeFeedback(start, end, len(m.report))))
 	}
 	b.WriteString("\n")
+	return b.String()
+}
+
+// agentModelsSummary describes an agent's current assignment as shown in the
+// agent list.
+func (m Model) agentModelsSummary(name string) string {
+	selection, ok := m.agentSelections[name]
+	if !ok || selection.Provider == "" || selection.Model == "" {
+		return "sin asignar"
+	}
+	summary := selection.Provider + "/" + selection.Model
+	if selection.Effort != "" {
+		summary += " · " + selection.Effort
+	}
+	return summary
+}
+
+func (m Model) currentAgentName() string {
+	if m.agentCursor < 0 || m.agentCursor >= len(m.agentNames) {
+		return ""
+	}
+	return m.agentNames[m.agentCursor]
+}
+
+// agentModelsRows are the plain rows of the list shown at the current level,
+// in order. They carry no styling so the shared wrapping and windowing helpers
+// measure them correctly.
+func (m Model) agentModelsRows() []string {
+	var rows []string
+	row := func(label, detail string) {
+		if detail != "" {
+			label += "  " + detail
+		}
+		rows = append(rows, label)
+	}
+	switch m.agentModelsLevel {
+	case agentLevel:
+		for _, name := range m.agentNames {
+			row(name, m.agentModelsSummary(name))
+		}
+	case providerLevel:
+		for _, provider := range m.modelCatalog {
+			row(provider.Name, provider.ID)
+		}
+	case modelLevel:
+		provider, _ := m.currentProvider()
+		for _, model := range provider.Models {
+			row(model.Name, model.ID)
+		}
+	case effortLevel:
+		model, _ := m.currentModel()
+		for _, effort := range model.Efforts {
+			row(effort, "")
+		}
+	}
+	return rows
+}
+
+func (m Model) agentModelsHeader() string {
+	var b strings.Builder
+	b.WriteString(stepStyle.Render("Opcional"))
+	b.WriteString("  " + titleStyle.Render("Modelos por agente") + "\n\n")
+	if subtitle := m.agentModelsSubtitle(); subtitle != "" {
+		b.WriteString(stepStyle.Render(subtitle) + "\n\n")
+	}
+	return b.String()
+}
+
+func (m Model) agentModelsSubtitle() string {
+	switch m.agentModelsLevel {
+	case providerLevel:
+		return "Proveedor para " + m.currentAgentName()
+	case modelLevel:
+		provider, _ := m.currentProvider()
+		return "Modelo de " + provider.ID + " para " + m.currentAgentName()
+	case effortLevel:
+		return "Esfuerzo de razonamiento para " + m.currentAgentName()
+	}
+	return ""
+}
+
+func agentModelsFooter(level agentModelsLevel, feedback string) string {
+	help := "↑/↓ mover · enter elegir · s omitir agente · ← volver · q salir"
+	switch level {
+	case agentLevel:
+		help = "↑/↓ mover · enter elegir modelo · n quitar asignación · s saltar paso · ← volver · q salir"
+	case effortLevel:
+		help = "↑/↓ mover · enter elegir · s sin esfuerzo · ← volver · q salir"
+	}
+	return helpStyle.Render(feedback) + "\n\n" + helpStyle.Render(help)
+}
+
+func (m Model) agentModelsListHeight(totalRows int) int {
+	return availableListHeight(m.height, m.agentModelsChromeHeight(), totalRows)
+}
+
+func (m Model) agentModelsChromeHeight() int {
+	total := len(m.agentModelsRows())
+	feedback := listRangeFeedback(max(0, total-1), total, total)
+	return visualHeight(
+		wizardHeader()+m.agentModelsHeader()+agentModelsFooter(m.agentModelsLevel, feedback)+"\n",
+		m.width,
+	)
+}
+
+// followAgentModelsCursor scrolls the list just enough to keep the highlighted
+// row visible after a cursor move or a level change.
+func (m *Model) followAgentModelsCursor() {
+	lines := m.agentModelsRows()
+	rows := listVisualRows(lines, m.width)
+	height := m.agentModelsListHeight(len(rows))
+	if len(rows) == 0 || height <= 0 {
+		m.agentModelsOffset = 0
+		return
+	}
+	cursor := m.agentModelsCursorValue()
+	first, last := -1, -1
+	for index, row := range rows {
+		if row.entry != cursor {
+			continue
+		}
+		if first < 0 {
+			first = index
+		}
+		last = index
+	}
+	offset := m.agentModelsOffset
+	if first >= 0 {
+		if offset > first {
+			offset = first
+		}
+		if offset < last-height+1 {
+			offset = last - height + 1
+		}
+	}
+	m.agentModelsOffset = clampListOffset(offset, len(rows), height)
+}
+
+func (m Model) agentModelsView() string {
+	var b strings.Builder
+	b.WriteString(m.agentModelsHeader())
+
+	lines := m.agentModelsRows()
+	rows := listVisualRows(lines, m.width)
+	height := m.agentModelsListHeight(len(rows))
+	offset := clampListOffset(m.agentModelsOffset, len(rows), height)
+	visible, start, end := orderedListWindow(rows, offset, height)
+	cursor := m.agentModelsCursorValue()
+	for index, row := range visible {
+		if rows[offset+index].entry == cursor {
+			if strings.HasPrefix(row, "  ") {
+				row = "> " + row[2:]
+			}
+			row = cursorStyle.Render(row)
+		}
+		b.WriteString(row + "\n")
+	}
+	b.WriteString(agentModelsFooter(m.agentModelsLevel, listRangeFeedback(start, end, len(lines))))
 	return b.String()
 }
 
@@ -609,6 +1116,10 @@ func (m Model) confirmationHeader() string {
 			}
 		}
 		b.WriteString(fmt.Sprintf("  Integraciones y extras: %s\n", selectedCount.Render(fmt.Sprintf("%d/%d", count, len(m.extras)))))
+	}
+	if m.agentModelsOffered {
+		b.WriteString(fmt.Sprintf("  Modelos por agente: %s\n", selectedCount.Render(
+			fmt.Sprintf("%d/%d", len(m.agentModelAssignments()), len(m.agentNames)))))
 	}
 	b.WriteString("\n" + stepStyle.Render(fmt.Sprintf("%d acciones sobre %s", len(m.confirmationPlan), m.configDir)) + "\n")
 	return b.String()
