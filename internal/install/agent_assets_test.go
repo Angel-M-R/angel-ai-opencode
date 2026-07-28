@@ -38,6 +38,17 @@ func requireTextInOrder(t *testing.T, value string, snippets ...string) {
 	}
 }
 
+func requireTextAbsent(t *testing.T, value string, snippets ...string) {
+	t.Helper()
+	normalizedValue := normalizedText(value)
+	for _, snippet := range snippets {
+		normalizedSnippet := normalizedText(snippet)
+		if strings.Contains(normalizedValue, normalizedSnippet) {
+			t.Fatalf("unexpected contract text %q", normalizedSnippet)
+		}
+	}
+}
+
 func orchestratorSection(t *testing.T, startHeading, endHeading string) string {
 	t.Helper()
 	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
@@ -62,6 +73,81 @@ func orchestratorBootstrapSection(t *testing.T) string {
 		"### Bootstrap gate before OpenSpec workers",
 		"### Workers and their official skills",
 	)
+}
+
+type strictDefaultConsumerContract struct {
+	name         string
+	startHeading string
+	endHeading   string
+	continuation []string
+}
+
+var strictDefaultConsumerContracts = []strictDefaultConsumerContract{
+	{
+		name:         "existing target resolution",
+		startHeading: "## Execution route selection",
+		endHeading:   "### Shared implementation-result policy",
+		continuation: []string{
+			"clean under the shared implementation-result policy",
+			"continue through the status-driven OpenSpec workflow",
+		},
+	},
+	{
+		name:         "initial Direct Safe result",
+		startHeading: "### Safe direct execution",
+		endHeading:   "### Fast direct execution",
+		continuation: []string{
+			"clean under the shared implementation-result policy",
+			"proceed to the direct Safe review gate",
+		},
+	},
+	{
+		name:         "Direct Fast result",
+		startHeading: "### Fast direct execution",
+		endHeading:   "### Direct review gate",
+		continuation: []string{
+			"clean under the shared implementation-result policy",
+			"Report the result explicitly as implemented but not verified and do not open the direct review gate.",
+		},
+	},
+	{
+		name:         "bounded Direct Safe review fix",
+		startHeading: "### Direct review gate",
+		endHeading:   "## Delegation rules",
+		continuation: []string{
+			"clean under the shared implementation-result policy",
+			"After a clean fix",
+			"Finish review (Recommended)",
+		},
+	},
+	{
+		name:         "OpenSpec bootstrap",
+		startHeading: "### Bootstrap gate before OpenSpec workers",
+		endHeading:   "### Workers and their official skills",
+		continuation: []string{
+			"dispatch the requested OpenSpec worker only when every blocking OpenSpec JSON readiness step succeeds",
+			"the result is otherwise clean under the shared implementation-result policy",
+		},
+	},
+	{
+		name:         "post-verification finding-ID fix",
+		startHeading: "## Review gate (after verification, before archive)",
+		endHeading:   "## Language",
+		continuation: []string{
+			"clean under the shared implementation-result policy",
+			"After a clean finding-ID fix result",
+			"Archive without re-review (Recommended)",
+		},
+	},
+	{
+		name:         "final OpenSpec verification",
+		startHeading: "**Completion rule:**",
+		endHeading:   "### Between phases",
+		continuation: []string{
+			"clean under the shared implementation-result policy",
+			"proceed directly to the existing Review gate",
+		},
+	},
 }
 
 func TestOrchestratorExecutionRouteOrderingContract(t *testing.T) {
@@ -157,10 +243,8 @@ func TestOrchestratorDirectRoutingContract(t *testing.T) {
 			"the selected Safe or Fast mode",
 			"explicit scope limits",
 			"Require this return contract",
-			"status (`done`, `partial`, or `blocked`)",
-			"files touched",
-			"commands run with exit codes",
-			"deviations from the Brief or scope",
+			"the orchestrator inserts the complete authoritative Shared corrected-failure result fields defined below",
+			"Direct-specific details: the selected mode, compliance with its mode obligations, and any deviation from the confirmed Brief",
 		)
 		requireTextInOrder(t, section,
 			"Mode obligations:",
@@ -204,54 +288,126 @@ func TestOrchestratorSafeDirectExecutionContract(t *testing.T) {
 
 func TestOrchestratorCorrectedIntermediateFailureContract(t *testing.T) {
 	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
-	requireTextInOrder(t, section,
-		"This shared strict policy is the default for every implementation result and every OpenSpec control point that invokes it.",
-		"The sole route-specific classification exception is inside the automatic planned-task loop",
-		"Any result that is not explicitly eligible for that exception remains subject to this strict default.",
-		"An intermediate non-zero command caused by command syntax or invocation is a corrected tooling error, rather than a mandatory stop, only when",
-		"the same worker identifies that cause",
-		"later runs an equivalent-or-broader relevant command with exit code zero",
-		"final status `done`",
-		"no deviation or out-of-scope work",
-		"The successful command MUST cover the failed command's relevant scope or a superset of it.",
-		"Retain and surface the original failed command and its exit code together with the later successful command and its exit code",
-		"A real verification or implementation failure remains a mandatory stop and is not a corrected tooling error.",
-		"another worker performs the rerun",
-		"the final status is not `done`",
-		"the rerun is unrelated or narrower",
-		"the final relevant verification state is red.",
-	)
 
-	t.Run("route-specific sections reference the shared policy", func(t *testing.T) {
-		requireTextInOrder(t,
-			orchestratorSection(t, "### Safe direct execution", "### Fast direct execution"),
-			"clean under the shared implementation-result policy",
-			"apply the shared mandatory-stop policy",
+	t.Run("uses one evidence rule for tooling and real failures", func(t *testing.T) {
+		requireTextInOrder(t, section,
+			"This shared strict policy is the default for every implementation result and every OpenSpec control point that invokes it.",
+			"The sole route-specific classification exception is inside the automatic planned-task loop",
+			"Any result that is not explicitly eligible for that exception remains subject to this strict default.",
+			"Shared corrected-failure result fields",
+			"single authoritative field set for every implementation or verification result",
+			"insert this exact list into the worker prompt",
+			"status (`done`, `partial`, or `blocked`)",
+			"files touched",
+			"every command in execution order with its exit code",
+			"for each non-zero command, the failed command and exit code, diagnosed cause and bounded correction",
+			"later equivalent-or-broader relevant validation command and exit code",
+			"final relevant validation state",
+			"deviations from the assigned Brief, change, task, or scope, including scope expansion and out-of-scope work",
+			"Classify an intermediate non-zero command, whether caused by a syntax or invocation mistake or by a real implementation or verification failure, as corrected only when all of these are true:",
+			"the same worker diagnoses the cause and repairs it within the same bounded invocation and authorized scope",
+			"the worker retains the original failed command and non-zero exit code, the diagnosed cause and bounded correction, and the later successful validation command and exit code in execution order",
+			"the later validation is equivalent to or broader than the failed command's relevant scope and exits zero",
+			"the final status is `done` and the final relevant validation state is green",
+			"the worker reports no deviation, scope expansion, or out-of-scope work",
+			"The successful validation MUST cover the failed command's relevant scope or a superset of it.",
+			"An eligible corrected failure is clean under this shared policy.",
+			"Surface the complete incident evidence and follow the strict-default control point's existing clean-result route without an authorization question, mandatory stop, or archive delay solely because of that incident.",
 		)
-		requireTextInOrder(t,
-			orchestratorSection(t, "### Direct review gate", "## Delegation rules"),
-			"clean under the shared implementation-result policy",
-			"apply the shared mandatory-stop policy",
-		)
-		requireTextInOrder(t,
-			orchestratorSection(t, "### Implementation stops and completion routing", "### Between phases"),
-			"classify the result under the planned-task exception to the shared implementation-result policy",
-			"Every other non-clean result applies the shared strict default.",
-			"Stop immediately and dispatch no further batch.",
-			"apply the shared mandatory-stop policy",
+
+		if count := strings.Count(normalizedText(section), "Classify an intermediate non-zero command"); count != 1 {
+			t.Fatalf("corrected-failure rule occurs %d times, want 1", count)
+		}
+		requireTextAbsent(t, section,
+			"corrected tooling error",
+			"A real verification or implementation failure remains a mandatory stop",
+			"the failed command was not caused by syntax or invocation",
 		)
 	})
+
+	t.Run("every strict consumer follows its existing clean route", func(t *testing.T) {
+		for _, consumer := range strictDefaultConsumerContracts {
+			t.Run(consumer.name, func(t *testing.T) {
+				requireTextInOrder(t,
+					orchestratorSection(t, consumer.startHeading, consumer.endHeading),
+					consumer.continuation...,
+				)
+			})
+		}
+	})
+
+	t.Run("route prompts reference the authoritative result fields", func(t *testing.T) {
+		contracts := []struct {
+			name         string
+			startHeading string
+			endHeading   string
+			extra        string
+		}{
+			{name: "Direct", startHeading: "## Execution route selection", endHeading: "### Shared implementation-result policy", extra: "Direct-specific details"},
+			{name: "bootstrap", startHeading: "### Bootstrap gate before OpenSpec workers", endHeading: "### Workers and their official skills", extra: "resolved context key, advisory warnings, and the blocking reason"},
+			{name: "OpenSpec task template", startHeading: "### Task prompt template", endHeading: "### Inline single-change archive", extra: "route-specific next recommended action"},
+			{name: "planned batch", startHeading: "### Automatic planned-task loop and bounded batches", endHeading: "### Implementation stops and completion routing", extra: "repair-progress evidence and every directly-necessary supporting adjustment"},
+		}
+		for _, contract := range contracts {
+			t.Run(contract.name, func(t *testing.T) {
+				requireTextInOrder(t,
+					orchestratorSection(t, contract.startHeading, contract.endHeading),
+					"authoritative Shared corrected-failure result fields",
+					contract.extra,
+				)
+			})
+		}
+	})
+
+	t.Run("clean verification reaches the one normal archive path", func(t *testing.T) {
+		requireTextInOrder(t,
+			orchestratorSection(t, "## Review gate (after verification, before archive)", "## Language"),
+			"None, archive now",
+			"proceed to archive automatically",
+			"An empty selection closes the review without fixes and proceeds to archive.",
+		)
+		requireTextInOrder(t,
+			orchestratorSection(t, "### Inline single-change archive", "### Planned-task implementation state"),
+			"Whenever this workflow reaches \"proceed to archive\"",
+			"the primary orchestrator MUST load and invoke `openspec-archive-change` itself",
+		)
+		requireTextInOrder(t, section,
+			"without an authorization question, mandatory stop, or archive delay solely because of that incident",
+		)
+	})
+}
+
+func TestOrchestratorRecoveredMissingOpenSpecProbeContract(t *testing.T) {
+	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+
+	// This is the exact `ls openspec`-before-creation incident contract: the
+	// probe observes absent state, then the same worker creates and validates it.
+	requireTextInOrder(t, section,
+		"Classify a failed command separately as a **recovered non-destructive probe**, rather than as a corrected implementation or validation failure",
+		"the command is inspection-only, performs no mutation or destructive action, and fails solely because expected pre-operation state is absent or not yet established",
+		"the same worker subsequently completes the authorized operation successfully within the same bounded invocation and authorized scope",
+		"the worker retains, in execution order, the failed probe and non-zero exit code, the absent-state cause, the successful authorized operation, the authoritative final validation command and exit code, and why that validation proves the requested final state",
+		"the authoritative final validation exits zero and proves the requested final state",
+		"the final status is `done` and the final relevant validation state is green",
+		"the worker reports no deviation from the assigned Brief, scope expansion, or out-of-scope work",
+		"A recovered probe requires no invented repair or equivalent rerun of the inspection command.",
+		"Surface its complete ordered incident evidence and follow the strict-default control point's existing clean-result route without an authorization, continuation, or follow-up question, mandatory stop, or archive delay solely because of that incident.",
+		"Never hide or relabel the failed probe or its exit code.",
+	)
 }
 
 func TestOrchestratorMandatoryImplementationStopsContract(t *testing.T) {
 	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
 	conditions := []string{
-		"a non-zero command has no later equivalent-or-broader relevant command exiting zero",
+		"a result containing an intermediate non-zero command fails any item in the authoritative corrected-failure eligibility checklist above",
+		"a claimed recovered probe fails any item in the authoritative recovered-probe eligibility checklist above, including when the command is destructive or mutating rather than inspection-only",
+		"the worker performs any destructive action before or after a failed command",
+		"corrected-failure or recovered-probe evidence is incomplete, comes from different workers, or relies on a successful command that is unrelated, narrower than required, or does not authoritatively prove the requested final state",
 		"the final relevant verification state is red",
 		"status is `partial` or `blocked`",
-		"the worker reports a deviation",
+		"the worker reports a deviation from the assigned Brief, change, task, or scope",
+		"the worker reports scope expansion",
 		"the worker reports out-of-scope work",
-		"a later successful command is unrelated to or narrower than the failed command's relevant scope",
 		"a TDD or expected failure remains red at batch end",
 	}
 
@@ -271,6 +427,10 @@ func TestOrchestratorMandatoryImplementationStopsContract(t *testing.T) {
 		"First report the blocking status and all retained evidence needed to choose an action",
 		"Then ask exactly one blocker-specific next-action `question`.",
 		"Until the user selects an action, do not retry, continue, broaden scope, select substitute work, advance to the route's next phase, or dispatch any worker.",
+	)
+	requireTextInOrder(t, section,
+		"The recovered-probe classification removes no route-local prerequisite or planned-task-specific safeguard and changes no unrelated routing or planned-task behavior.",
+		"Any unresolved failure or ambiguous probe classification remains subject to the mandatory-stop policy.",
 	)
 }
 
@@ -407,6 +567,109 @@ func TestOrchestratorPlannedBatchImplementerContract(t *testing.T) {
 	})
 }
 
+func TestOrchestratorVerifierOwnedTaskRoutingContract(t *testing.T) {
+	freshState := orchestratorSection(t, "### Planned-task implementation state", "### Automatic planned-task loop and bounded batches")
+	plannedLoop := orchestratorSection(t, "### Automatic planned-task loop and bounded batches", "### Implementation stops and completion routing")
+	completion := orchestratorSection(t, "**Completion rule:**", "### Between phases")
+
+	t.Run("schedules ordinary sections before marked work", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"With a valid marked terminal section, exclude every task in that section from every implementer batch",
+			"select the next incomplete ordinary section before it",
+			"When fresh state shows every ordinary task complete and only pending tasks from the valid marked terminal section remain",
+			"do not dispatch an implementer",
+			"Automatically dispatch exactly one `openspec-verifier`",
+		)
+	})
+
+	t.Run("recognizes only exact structurally valid markers", func(t *testing.T) {
+		requireTextInOrder(t, freshState,
+			"structurally validate owner-marker state before scheduling",
+			"ownership exists only for one exact `<!-- owner: openspec-verifier -->` marker",
+			"the first nonblank line of the final named top-level task section",
+			"A section title, task wording, legacy verification prose, or any other comment does not establish ownership",
+			"Duplicate, malformed, misplaced, nested, or non-terminal owner markers are an invalid task-state conflict",
+			"stop without dispatching an implementer or verifier and change no checkbox",
+		)
+		requireTextInOrder(t, plannedLoop,
+			"With no valid exact owner marker, preserve the existing behavior",
+			"verification-like titles or prose are ordinary",
+		)
+	})
+
+	t.Run("propagates exact local and store contexts", func(t *testing.T) {
+		requireTextInOrder(t, freshState,
+			"For a local change, use the exact repo-local root returned by successful bootstrap as the working directory and context identity",
+			"run `openspec status --change <name> --json` there",
+			"For an explicit store, retain the exact store id and append `--store <id>` to every applicable status or guarded verifier-task command",
+			"use `store:<id>` as the context identity and never infer, substitute, or switch to a local project path for that store",
+			"Propagate that exact local root or store id in every worker dispatch and all later refreshes.",
+		)
+		requireTextInOrder(t, completion,
+			"propagate the exact repo-local root as the working directory or the exact explicit store id without local-path inference",
+			"`angel-ai verifier-tasks snapshot --change <name>`",
+			"the same `--store <id>` when applicable",
+			"guarded completion, and result",
+			"make one completion confirmation by applying the fresh-state invariant in that same context",
+		)
+	})
+
+	t.Run("stops on invalid stale or incomplete state", func(t *testing.T) {
+		requireTextInOrder(t, freshState,
+			"its resolved path or active context changes, or marker state is invalid",
+			"stop the planned-task cycle as `blocked`",
+		)
+		requireTextInOrder(t, completion,
+			"Every failure, `not-verified`, partial or blocked status, evidence gap, non-successful completion, stale snapshot, changed context or resolved path, or conflict is a mandatory stop",
+			"before retry, review, archive, fallback checkbox changes, or any worker dispatch",
+			"make one completion confirmation by applying the fresh-state invariant in that same context",
+			"any remaining task, changed resolution, unreadable state, or checked-task/red-evidence disagreement is a mandatory-stop conflict",
+		)
+	})
+
+	t.Run("ordinary unmarked pass proceeds without guarded completion", func(t *testing.T) {
+		requireTextInOrder(t, completion,
+			"For the ordinary unmarked entry",
+			"clean exact `status: done`",
+			"global `verdict: pass`",
+			"successful executed verification evidence",
+			"`completion: not-attempted` (or the equivalent ordinary no-completion state)",
+			"proceed directly to the existing Review gate",
+			"guarded completion is neither required nor permitted for this entry",
+		)
+	})
+
+	t.Run("accepts atomic completion and reuses one pass", func(t *testing.T) {
+		requireTextInOrder(t, completion,
+			"Accept only the complete tuple: a result clean under the shared implementation-result policy",
+			"exact `status: done`",
+			"global `verdict: pass`",
+			"successful executed task-specific evidence for every captured marked task",
+			"exact `completion: completed`",
+			"no conflict",
+			"After accepting the marked-only tuple",
+			"make one completion confirmation by applying the fresh-state invariant in that same context",
+			"complete artifact status, and no pending checkbox",
+			"retain and reuse the returned pass and command evidence as final verification",
+		)
+		if count := strings.Count(normalizedText(completion), normalizedText("Automatically dispatch `openspec-verifier`")); count != 1 {
+			t.Fatalf("ordinary completion dispatch count = %d, want 1", count)
+		}
+		requireTextAbsent(t, completion,
+			"dispatch a second verifier",
+			"rerun verification after checkbox completion",
+		)
+	})
+
+	t.Run("permits verification while only marked terminal tasks remain", func(t *testing.T) {
+		verificationPolicy := orchestratorSection(t, "## Verification policy", "## Review gate (after verification, before archive)")
+		requireTextInOrder(t, verificationPolicy,
+			"the verifier runs the mandatory repository tests and build only after fresh task state shows either all planned tasks complete or only the valid marked terminal section pending",
+			"planned-task implementers run only their permitted bounded lint, typecheck, and minimum relevant test checks",
+		)
+	})
+}
+
 func TestOrchestratorStrictRoutesExcludePlannedDeferral(t *testing.T) {
 	sharedPolicy := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
 	requireTextInOrder(t, sharedPolicy,
@@ -416,6 +679,38 @@ func TestOrchestratorStrictRoutesExcludePlannedDeferral(t *testing.T) {
 		"Planned-batch self-repair and deferral never apply to Direct work, review-fix batches, bootstrap, target resolution, post-verification finding-ID fixes, or final verification.",
 		"These classifications never apply to Direct work, review-fix batches, bootstrap, target resolution, post-verification finding-ID fixes, or final verification",
 	)
+
+	plannedLoop := orchestratorSection(t, "### Automatic planned-task loop and bounded batches", "### Between phases")
+	t.Run("retains every planned-only safeguard", func(t *testing.T) {
+		requireTextInOrder(t, plannedLoop,
+			"Automatic execution rule",
+			"After every clean result",
+			"automatically repeat for the next incomplete section",
+			"planned-task self-repair rule",
+			"leave every other task unchecked",
+			"Conservative independence gate",
+			"Single retry round",
+			"A planned-loop hard blocker exists",
+		)
+	})
+
+	plannedOnlyContracts := []string{
+		"planned-task self-repair rule",
+		"leave every other task unchecked",
+		"deferrable result",
+		"Conservative independence gate",
+		"Automatic execution rule",
+		"Single retry round",
+		"A planned-loop hard blocker exists",
+	}
+	for _, consumer := range strictDefaultConsumerContracts {
+		t.Run(consumer.name+" cannot use planned-only safeguards", func(t *testing.T) {
+			requireTextAbsent(t,
+				orchestratorSection(t, consumer.startHeading, consumer.endHeading),
+				plannedOnlyContracts...,
+			)
+		})
+	}
 
 	t.Run("existing target resolution stays strict", func(t *testing.T) {
 		requireTextInOrder(t,
@@ -427,8 +722,8 @@ func TestOrchestratorStrictRoutesExcludePlannedDeferral(t *testing.T) {
 
 	t.Run("bootstrap stays strict", func(t *testing.T) {
 		requireTextInOrder(t, orchestratorBootstrapSection(t),
-			"If bootstrap blocks or fails, do not launch the OpenSpec worker",
-			"apply the shared mandatory-stop policy",
+			"every blocking OpenSpec JSON readiness step succeeds",
+			"Any real readiness failure or other non-clean result remains a mandatory stop",
 		)
 	})
 
@@ -446,7 +741,7 @@ func TestOrchestratorStrictRoutesExcludePlannedDeferral(t *testing.T) {
 		requireTextInOrder(t,
 			orchestratorSection(t, "### Implementation stops and completion routing", "### Between phases"),
 			"Automatically dispatch `openspec-verifier`",
-			"If verification fails, blocks, or is incomplete",
+			"a failed, blocked, or incomplete verification retains its status, commands, exit codes, and diagnostic",
 			"apply the shared mandatory-stop policy",
 		)
 	})
@@ -508,7 +803,7 @@ func TestOrchestratorMandatoryStopInteractionContract(t *testing.T) {
 			name:         "final verification",
 			startHeading: "### Implementation stops and completion routing",
 			endHeading:   "### Between phases",
-			evidence:     "retain its status, commands, exit codes, and diagnostic",
+			evidence:     "retains its status, commands, exit codes, and diagnostic",
 		},
 		{
 			name:         "Direct Safe",
@@ -720,17 +1015,25 @@ func TestOrchestratorArchivesSingleChangesInline(t *testing.T) {
 func TestOrchestratorOpenSpecBootstrapContract(t *testing.T) {
 	section := orchestratorBootstrapSection(t)
 
-	t.Run("gates workers before dispatch", func(t *testing.T) {
+	t.Run("gates workers on strict readiness with one dispatch rule", func(t *testing.T) {
 		requireTextInOrder(t, section,
 			"Before dispatching `openspec-planner`, `openspec-implementer`, or `openspec-verifier`",
 			"dispatch one short `general` task",
-			"wait for it to succeed",
-			"Add the returned context key to the set only after success",
-			"If bootstrap blocks or fails, do not launch the OpenSpec worker",
+			"Add the returned context key and dispatch the requested OpenSpec worker only when every blocking OpenSpec JSON readiness step succeeds",
+			"the result is otherwise clean under the shared implementation-result policy",
+			"Any real readiness failure or other non-clean result remains a mandatory stop",
 			"retain and report its status, diagnostic, commands, and exit codes",
 			"apply the shared mandatory-stop policy",
-			"Only after a successful bootstrap may the requested OpenSpec worker be dispatched",
 		)
+		for _, redundant := range []string{
+			"Only after a clean bootstrap result may the requested OpenSpec worker be dispatched.",
+			"Only after a successful bootstrap may the requested OpenSpec worker be dispatched",
+			"success here requires that clean classification",
+		} {
+			if strings.Contains(section, redundant) {
+				t.Fatalf("redundant bootstrap gate retained: %q", redundant)
+			}
+		}
 	})
 
 	t.Run("reuses only a successful matching context", func(t *testing.T) {
@@ -800,10 +1103,14 @@ func TestOrchestratorOpenSpecBootstrapContract(t *testing.T) {
 		}
 	})
 
-	t.Run("warns and falls back to filesystem tools", func(t *testing.T) {
+	t.Run("warns and falls back without making bootstrap non-clean", func(t *testing.T) {
 		requireTextInOrder(t, section,
+			"an unavailable or non-zero `codegraph init` is a retained advisory warning",
+			"is excluded from that clean classification",
+			"never blocks otherwise-green OpenSpec readiness",
 			"If `codegraph init <project-root>` is unavailable or exits non-zero",
 			"retain the exact command, exit code, and advisory warning",
+			"return status `done` when OpenSpec readiness is otherwise green",
 			"continue the OpenSpec workflow with filesystem tools",
 			"CodeGraph preparation is advisory and MUST NOT weaken or replace blocking OpenSpec JSON readiness",
 		)
@@ -1018,6 +1325,254 @@ func TestSelectedReviewerAssetsAreCatalogedAndInstalledUnchanged(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(got, want) {
+			t.Errorf("installed %s differs from selected asset", item.Name)
+		}
+	}
+}
+
+func TestSelectedOrchestratorAssetIsCatalogedAndInstalledUnchanged(t *testing.T) {
+	assetsRoot := filepath.Join("..", "..", "assets")
+	assetSource := assetfs.Directory(assetsRoot)
+	categories, err := catalog.Load(assetSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var selected catalog.Item
+	for _, category := range categories {
+		if category.Name != "agents" {
+			continue
+		}
+		for _, item := range category.Items {
+			if item.Name == "angel-orchestrator" {
+				selected = item
+			}
+		}
+	}
+	if selected != (catalog.Item{
+		Name: "angel-orchestrator", Source: "agents/angel-orchestrator.md",
+		Dest: filepath.Join("agents", "angel-orchestrator.md"), Kind: catalog.CopyFile,
+	}) {
+		t.Fatalf("orchestrator catalog item = %#v", selected)
+	}
+
+	configDir := t.TempDir()
+	if _, err := ApplyInstallation(InstallationRequest{
+		Items: []catalog.Item{selected}, Assets: assetSource, ConfigDir: configDir,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want, err := assetSource.ReadFile(selected.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(configDir, selected.Dest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("installed orchestrator differs from the selected asset")
+	}
+	for _, contract := range []string{
+		"recovered non-destructive probe",
+		"the same worker subsequently completes the authorized operation successfully",
+		"without an authorization, continuation, or follow-up question",
+	} {
+		if !strings.Contains(normalizedText(string(got)), normalizedText(contract)) {
+			t.Errorf("installed orchestrator is missing recovered-probe contract %q", contract)
+		}
+	}
+}
+
+func TestExistingOrchestratorCopyRequiresUpdatedSourceAndSelectedReconciliation(t *testing.T) {
+	assetRoot := t.TempDir()
+	agentsDir := filepath.Join(assetRoot, "agents")
+	if err := os.Mkdir(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	assetPath := filepath.Join(agentsDir, "angel-orchestrator.md")
+	original := []byte("original orchestrator policy\n")
+	updated := []byte("updated recovered-probe policy\n")
+	if err := os.WriteFile(assetPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	assetSource := assetfs.Directory(assetRoot)
+	categories, err := catalog.Load(assetSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected catalog.Item
+	for _, category := range categories {
+		if category.Name == "agents" && len(category.Items) == 1 {
+			selected = category.Items[0]
+		}
+	}
+	if selected.Name != "angel-orchestrator" {
+		t.Fatalf("selected agent = %#v", selected)
+	}
+
+	configDir := t.TempDir()
+	reconcile := func() {
+		t.Helper()
+		if _, err := ApplyInstallation(InstallationRequest{
+			Items: []catalog.Item{selected}, Assets: assetSource, ConfigDir: configDir,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reconcile()
+	installedPath := filepath.Join(configDir, selected.Dest)
+
+	// Repository edits similarly do not mutate an existing configured copy. A
+	// rebuild or explicit updated asset source must still be followed by
+	// reconciliation with angel-orchestrator selected.
+	if err := os.WriteFile(assetPath, updated, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.ReadFile(installedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(installed, original) {
+		t.Fatal("configured copy changed before selected-agent reconciliation")
+	}
+
+	reconcile()
+	installed, err = os.ReadFile(installedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(installed, updated) {
+		t.Fatal("selected-agent reconciliation did not propagate the updated source")
+	}
+}
+
+func TestOpenSpecPlannerVerifierOwnedTaskContract(t *testing.T) {
+	planner := readRepositoryAsset(t, "agents", "openspec-planner.md")
+	requireTextInOrder(t, planner,
+		"When creating or updating `tasks.md`, you may emit at most one exact `<!-- owner: openspec-verifier -->` marker.",
+		"place it as the first nonblank line immediately below the heading of one named top-level task section",
+		"make that section the final task section",
+		"only terminal final-verification obligations with independently reportable executed evidence",
+		"Keep setup, implementation, test implementation, contract updates, and focused validation in earlier ordinary unmarked sections.",
+		"If the plan has no terminal final-verification task, omit the marker",
+		"never infer or retrofit ownership from an existing section title, task wording, comment, or legacy verification prose",
+		"never emit a duplicate, malformed, nested, misplaced, or non-terminal owner marker",
+	)
+}
+
+func TestOpenSpecVerifierGuardedTaskCompletionContract(t *testing.T) {
+	verifier := readRepositoryAsset(t, "agents", "openspec-verifier.md")
+	frontmatter, body, found := strings.Cut(strings.TrimPrefix(verifier, "---\n"), "---\n")
+	if !found {
+		t.Fatal("verifier frontmatter is missing")
+	}
+
+	for _, contract := range []string{
+		"edit: false",
+		"write: false",
+		`"*": "deny"`,
+		`"git status*": "allow"`,
+		`"git diff*": "allow"`,
+		`"rg *": "allow"`,
+		`"go test *": "allow"`,
+		`"go build *": "allow"`,
+		`"openspec status *": "allow"`,
+		`"openspec validate *": "allow"`,
+		`"angel-ai verifier-tasks snapshot --change *": "allow"`,
+		`"angel-ai verifier-tasks complete --change *": "allow"`,
+	} {
+		if !strings.Contains(frontmatter, contract) {
+			t.Errorf("missing verifier permission contract %q", contract)
+		}
+	}
+	if strings.Contains(frontmatter, "bash:\n    \"*\": \"allow\"") {
+		t.Error("verifier bash permission must not use a broad allow default")
+	}
+
+	requireTextInOrder(t, body,
+		"Before verification, capture fresh resolved task state with `angel-ai verifier-tasks snapshot --change <name>`",
+		"for an explicit store, append `--store <id>`",
+		"Snapshot capture represents valid unmarked documents and valid marked sections with no pending tasks",
+		"continue ordinary verification in either state and do not invoke completion",
+		"For every pending task returned in the marked section snapshot, record one task-specific evidence entry using the exact task identity.",
+		"Evidence must cite applicable commands you actually executed, their exit codes, and successful results",
+		"Only when the snapshot has a valid marker and a non-empty exact pending task set",
+		"after a global `pass` with successful executed evidence covering every task in that set",
+		"may you invoke `angel-ai verifier-tasks complete --change <name>`",
+		"the exact `snapshot`, `verdict`, `tasks`, and `evidence` JSON on stdin",
+		"This guarded operation is the only permitted mutation",
+		"never edit, fix, reformat, or write product code or any tracked file",
+		"Generic edit and write tools remain disabled.",
+		"Do not use any other mutating shell command",
+		"On `fail`, `not-verified`, incomplete task evidence, or red final evidence, do not invoke completion",
+		"report `completion: not-attempted` with no checkbox changes",
+		"If verification passes but guarded completion reports a conflict",
+		"report `status: blocked` and `completion: conflict`",
+		"do not claim or attempt to mark any task",
+		"Return every authoritative Shared corrected-failure result field supplied in the orchestrator prompt",
+		"ordered failed/correction/success evidence",
+		"equivalent-or-broader scope coverage",
+		"final relevant validation state",
+		"files touched",
+		"deviations, scope expansion, or out-of-scope evidence",
+		"`verdict` (`pass`, `fail`, or `not-verified`)",
+		"per-task `evidence`",
+		"`completion`, `conflicts`",
+		"findings ordered by severity with file:line references",
+		"scenario→evidence coverage summary",
+	)
+}
+
+func TestPlannerAndVerifierAssetsAreInstalledUnchanged(t *testing.T) {
+	assetsRoot := filepath.Join("..", "..", "assets")
+	assetSource := assetfs.Directory(assetsRoot)
+	categories, err := catalog.Load(assetSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]string{
+		"openspec-planner":  "openspec-planner.md",
+		"openspec-verifier": "openspec-verifier.md",
+	}
+	var selected []catalog.Item
+	for _, category := range categories {
+		if category.Name != "agents" {
+			continue
+		}
+		for _, item := range category.Items {
+			fileName, ok := want[item.Name]
+			if !ok {
+				continue
+			}
+			if item.Kind != catalog.CopyFile || item.Source != "agents/"+fileName || item.Dest != filepath.Join("agents", fileName) {
+				t.Fatalf("catalog item %q = %#v", item.Name, item)
+			}
+			selected = append(selected, item)
+		}
+	}
+	if len(selected) != len(want) {
+		t.Fatalf("selected planner/verifier assets = %v, want %d", selected, len(want))
+	}
+
+	configDir := t.TempDir()
+	if _, err := ApplyInstallation(InstallationRequest{
+		Items: selected, Assets: assetSource, ConfigDir: configDir,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range selected {
+		wantContent, err := assetSource.ReadFile(item.Source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(configDir, item.Dest))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, wantContent) {
 			t.Errorf("installed %s differs from selected asset", item.Name)
 		}
 	}

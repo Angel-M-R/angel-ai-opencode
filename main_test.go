@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"reflect"
@@ -10,6 +12,7 @@ import (
 
 	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/install"
+	"angel-ai-opencode/internal/verifiertasks"
 )
 
 type recordedUpdatePolicy struct {
@@ -188,6 +191,168 @@ func TestRunCLIRejectsUnknownCommandsAndFlags(t *testing.T) {
 			err := runCLI(test.args, cliDependencies{})
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want text %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestRunCLIVerifierTasksSnapshotPreservesExplicitStore(t *testing.T) {
+	var output bytes.Buffer
+	wantSnapshot := verifiertasks.Snapshot{Version: 1, Change: "demo", Store: "shared", ContextIdentity: "store:shared"}
+	err := runCLI([]string{"verifier-tasks", "snapshot", "--change", "demo", "--store", "shared"}, cliDependencies{
+		stdout:           &output,
+		workingDirectory: func() (string, error) { return "/repo", nil },
+		captureVerifierTasks: func(_ context.Context, request verifiertasks.ResolveRequest) (verifiertasks.Result, error) {
+			if request.Change != "demo" || request.Store != "shared" || request.WorkingDirectory != "/repo" {
+				t.Fatalf("resolve request = %+v", request)
+			}
+			return verifiertasks.Result{
+				Status: "done", Verdict: "not-verified", Completion: "not-attempted",
+				Evidence: []verifiertasks.TaskEvidence{}, Commands: []verifiertasks.CommandRecord{},
+				Conflicts: []verifiertasks.Conflict{}, Snapshot: &wantSnapshot,
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result verifiertasks.Result
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Snapshot == nil || !reflect.DeepEqual(*result.Snapshot, wantSnapshot) {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestRunCLIVerifierTasksCompleteReadsStructuredJSONFromStdin(t *testing.T) {
+	task := verifiertasks.TaskIdentity{ID: "2.1", Text: "2.1 Run focused tests."}
+	request := verifiertasks.CompleteRequest{
+		Snapshot: verifiertasks.Snapshot{Version: 1, Change: "demo", PendingTasks: []verifiertasks.TaskIdentity{task}},
+		Verdict:  "pass",
+		Tasks:    []verifiertasks.TaskIdentity{task},
+		Evidence: []verifiertasks.TaskEvidence{{
+			Task: task, Status: "pass",
+			Commands: []verifiertasks.CommandRecord{{Command: []string{"go", "test", "./focused"}, ExitCode: 0}},
+		}},
+	}
+	input, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	err = runCLI([]string{"verifier-tasks", "complete", "--change", "demo"}, cliDependencies{
+		stdin:            bytes.NewReader(input),
+		stdout:           &output,
+		workingDirectory: func() (string, error) { return "/repo", nil },
+		completeVerifierTasks: func(_ context.Context, resolve verifiertasks.ResolveRequest, got verifiertasks.CompleteRequest) (verifiertasks.Result, error) {
+			if resolve.Change != "demo" || resolve.Store != "" || resolve.WorkingDirectory != "/repo" {
+				t.Fatalf("resolve request = %+v", resolve)
+			}
+			if !reflect.DeepEqual(got, request) {
+				t.Fatalf("completion request = %+v, want %+v", got, request)
+			}
+			return verifiertasks.Result{
+				Status: "done", Verdict: "pass", Evidence: got.Evidence, Completion: "completed",
+				Commands: got.Evidence[0].Commands, Conflicts: []verifiertasks.Conflict{},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result verifiertasks.Result
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "done" || result.Verdict != "pass" || result.Completion != "completed" || len(result.Evidence) != 1 || len(result.Commands) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestRunCLIVerifierTasksCompletionExitContract(t *testing.T) {
+	request := verifiertasks.CompleteRequest{
+		Snapshot: verifiertasks.Snapshot{Version: 1, Change: "demo"},
+		Verdict:  "pass",
+	}
+	input, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("logical conflict is structured success", func(t *testing.T) {
+		var output bytes.Buffer
+		err := runCLI([]string{"verifier-tasks", "complete", "--change", "demo"}, cliDependencies{
+			stdin:            bytes.NewReader(input),
+			stdout:           &output,
+			workingDirectory: func() (string, error) { return "/repo", nil },
+			completeVerifierTasks: func(context.Context, verifiertasks.ResolveRequest, verifiertasks.CompleteRequest) (verifiertasks.Result, error) {
+				return verifiertasks.Result{
+					Status: "blocked", Verdict: "pass", Completion: "conflict",
+					Evidence: []verifiertasks.TaskEvidence{}, Commands: []verifiertasks.CommandRecord{},
+					Conflicts: []verifiertasks.Conflict{{Code: "content_changed", Detail: "tasks.md changed"}},
+				}, nil
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result verifiertasks.Result
+		if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Status != "blocked" || result.Completion != "conflict" || len(result.Conflicts) != 1 {
+			t.Fatalf("result = %+v", result)
+		}
+	})
+
+	t.Run("infrastructure failure returns an error after structured output", func(t *testing.T) {
+		var output bytes.Buffer
+		infrastructureErr := errors.New("atomic rename failed")
+		err := runCLI([]string{"verifier-tasks", "complete", "--change", "demo"}, cliDependencies{
+			stdin:            bytes.NewReader(input),
+			stdout:           &output,
+			workingDirectory: func() (string, error) { return "/repo", nil },
+			completeVerifierTasks: func(context.Context, verifiertasks.ResolveRequest, verifiertasks.CompleteRequest) (verifiertasks.Result, error) {
+				return verifiertasks.Result{
+					Status: "blocked", Verdict: "pass", Completion: "conflict",
+					Evidence: []verifiertasks.TaskEvidence{}, Commands: []verifiertasks.CommandRecord{},
+					Conflicts: []verifiertasks.Conflict{{Code: "atomic_commit_failed", Detail: infrastructureErr.Error()}},
+				}, infrastructureErr
+			},
+		})
+		if !errors.Is(err, infrastructureErr) {
+			t.Fatalf("error = %v, want infrastructure failure", err)
+		}
+		if output.Len() == 0 {
+			t.Fatal("infrastructure failure omitted structured result")
+		}
+	})
+}
+
+func TestRunCLIVerifierTasksRejectsUnstructuredInputs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		body string
+		want string
+	}{
+		{name: "unknown phase", args: []string{"verifier-tasks", "edit", "--change", "demo"}, want: "unknown phase"},
+		{name: "missing change", args: []string{"verifier-tasks", "snapshot"}, want: "--change is required"},
+		{name: "unknown JSON field", args: []string{"verifier-tasks", "complete", "--change", "demo"}, body: `{"edit":"anything"}`, want: "unknown field"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := runCLI(test.args, cliDependencies{
+				stdin:            strings.NewReader(test.body),
+				stdout:           &bytes.Buffer{},
+				workingDirectory: func() (string, error) { return "/repo", nil },
+				completeVerifierTasks: func(context.Context, verifiertasks.ResolveRequest, verifiertasks.CompleteRequest) (verifiertasks.Result, error) {
+					return verifiertasks.Result{}, nil
+				},
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want containing %q", err, test.want)
 			}
 		})
 	}

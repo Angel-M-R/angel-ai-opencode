@@ -161,6 +161,23 @@ If the task prompt includes a Brief (confirmed interview decisions), treat it
 as requirements input: artifacts must not contradict it, and open questions it
 already answers must not be re-asked.
 
+## Verifier-owned terminal tasks
+
+When creating or updating `tasks.md`, you may emit at most one exact
+`<!-- owner: openspec-verifier -->` marker. When present, place it as the first
+nonblank line immediately below the heading of one named top-level task section,
+and make that section the final task section. The marked section must contain
+only terminal final-verification obligations with independently reportable
+executed evidence.
+
+Keep setup, implementation, test implementation, contract updates, and focused
+validation in earlier ordinary unmarked sections. If the plan has no terminal
+final-verification task, omit the marker and preserve the ordinary task
+workflow. Ownership is exact and structural: never infer or retrofit ownership
+from an existing section title, task wording, comment, or legacy verification
+prose, and never emit a duplicate, malformed, nested, misplaced, or non-terminal
+owner marker.
+
 Do not delegate. Return a compact result: status (done|blocked|partial),
 artifacts written, and the next recommended action according to
 `openspec status --change <name> --json`. Never paste artifact bodies into

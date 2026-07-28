@@ -4,7 +4,9 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +20,7 @@ import (
 	"angel-ai-opencode/internal/install"
 	"angel-ai-opencode/internal/tui"
 	"angel-ai-opencode/internal/updater"
+	"angel-ai-opencode/internal/verifiertasks"
 )
 
 //go:embed all:assets
@@ -39,9 +42,13 @@ type updatePolicy interface {
 }
 
 type cliDependencies struct {
-	stdout          io.Writer
-	runInstaller    func(rootOptions) error
-	newUpdatePolicy func() updatePolicy
+	stdout                io.Writer
+	stdin                 io.Reader
+	runInstaller          func(rootOptions) error
+	newUpdatePolicy       func() updatePolicy
+	workingDirectory      func() (string, error)
+	captureVerifierTasks  func(context.Context, verifiertasks.ResolveRequest) (verifiertasks.Result, error)
+	completeVerifierTasks func(context.Context, verifiertasks.ResolveRequest, verifiertasks.CompleteRequest) (verifiertasks.Result, error)
 }
 
 func main() {
@@ -52,14 +59,19 @@ func main() {
 }
 
 func defaultCLIDependencies() cliDependencies {
+	verifierTasks := verifiertasks.NewService()
 	return cliDependencies{
 		stdout: os.Stdout,
+		stdin:  os.Stdin,
 		runInstaller: func(options rootOptions) error {
 			return run(options.assetsDir, options.configDir, options.all, options.dryRun)
 		},
 		newUpdatePolicy: func() updatePolicy {
 			return updater.New(updater.Config{Output: os.Stdout})
 		},
+		workingDirectory:      os.Getwd,
+		captureVerifierTasks:  verifierTasks.Capture,
+		completeVerifierTasks: verifierTasks.Complete,
 	}
 }
 
@@ -70,11 +82,86 @@ func runCLI(args []string, dependencies cliDependencies) error {
 			return runVersionCommand(args[1:], dependencies)
 		case "update":
 			return runUpdateCommand(args[1:], dependencies)
+		case "verifier-tasks":
+			return runVerifierTasksCommand(args[1:], dependencies)
 		default:
 			return fmt.Errorf("unknown command %q", args[0])
 		}
 	}
 	return runRootCommand(args, dependencies)
+}
+
+func runVerifierTasksCommand(args []string, dependencies cliDependencies) error {
+	if len(args) == 0 {
+		return fmt.Errorf("verifier-tasks: phase must be snapshot or complete")
+	}
+	phase := args[0]
+	flags := flag.NewFlagSet("angel-ai verifier-tasks "+phase, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	change := flags.String("change", "", "active OpenSpec change")
+	store := flags.String("store", "", "explicit OpenSpec store id")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("verifier-tasks %s: unexpected argument %q", phase, flags.Arg(0))
+	}
+	if strings.TrimSpace(*change) == "" {
+		return fmt.Errorf("verifier-tasks %s: --change is required", phase)
+	}
+	if dependencies.workingDirectory == nil {
+		return fmt.Errorf("verifier-tasks: working-directory resolver is unavailable")
+	}
+	directory, err := dependencies.workingDirectory()
+	if err != nil {
+		return fmt.Errorf("verifier-tasks: resolving working directory: %w", err)
+	}
+	resolve := verifiertasks.ResolveRequest{Change: *change, Store: *store, WorkingDirectory: directory}
+	var result verifiertasks.Result
+	switch phase {
+	case "snapshot":
+		if dependencies.captureVerifierTasks == nil {
+			return fmt.Errorf("verifier-tasks: snapshot operation is unavailable")
+		}
+		result, err = dependencies.captureVerifierTasks(context.Background(), resolve)
+	case "complete":
+		if dependencies.completeVerifierTasks == nil {
+			return fmt.Errorf("verifier-tasks: completion operation is unavailable")
+		}
+		if dependencies.stdin == nil {
+			return fmt.Errorf("verifier-tasks complete: JSON stdin is required")
+		}
+		var request verifiertasks.CompleteRequest
+		decoder := json.NewDecoder(dependencies.stdin)
+		decoder.DisallowUnknownFields()
+		if decodeErr := decoder.Decode(&request); decodeErr != nil {
+			return fmt.Errorf("verifier-tasks complete: decoding JSON stdin: %w", decodeErr)
+		}
+		if decodeErr := ensureJSONEnd(decoder); decodeErr != nil {
+			return fmt.Errorf("verifier-tasks complete: decoding JSON stdin: %w", decodeErr)
+		}
+		result, err = dependencies.completeVerifierTasks(context.Background(), resolve, request)
+	default:
+		return fmt.Errorf("verifier-tasks: unknown phase %q", phase)
+	}
+	if encodeErr := json.NewEncoder(dependencies.stdout).Encode(result); encodeErr != nil {
+		return encodeErr
+	}
+	// Logical rejections and conflicts are complete structured results and return
+	// a nil operation error. Non-nil errors are reserved for malformed input or
+	// infrastructure and encoding failures, which map to a non-zero CLI exit.
+	return err
+}
+
+func ensureJSONEnd(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return err
+	}
+	return nil
 }
 
 func runRootCommand(args []string, dependencies cliDependencies) error {

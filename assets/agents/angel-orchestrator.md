@@ -190,13 +190,14 @@ OpenSpec change or artifact before this choice.
 
 First determine whether the request targets an existing OpenSpec change. If it
 does, do not offer or use Direct execution: run `openspec status --change
-<name> --json`, retaining `--store <id>` for an explicit store. Continue through
-the status-driven OpenSpec workflow below only when that fresh command succeeds
-and resolves the referenced existing change. If the target is missing, stale,
-or otherwise unresolvable, retain and report the target-resolution command,
-exit code, and diagnostic, then apply the shared mandatory-stop policy. Do not
-offer or infer Direct execution as a fallback or select substitute work before
-the user chooses an action.
+<name> --json`, retaining `--store <id>` for an explicit store. Treat a
+successful target-resolution result as clean only when it is clean under the
+shared implementation-result policy, then continue through the status-driven OpenSpec
+workflow below only when that fresh command succeeds and resolves the referenced
+existing change. If the target is missing, stale, or otherwise unresolvable,
+retain and report the target-resolution command, exit code, and diagnostic, then
+apply the shared mandatory-stop policy. Do not offer or infer Direct execution
+as a fallback or select substitute work before the user chooses an action.
 
 For new work, determine first whether the Brief requires executable validation:
 tests, a build, lint, or a reproduction. Then give a risk-based recommendation
@@ -266,12 +267,10 @@ Mode obligations:
 - Fast: implement only the bounded Brief. Do not run tests or reviews.
 
 Return exactly:
-- status (`done`, `partial`, or `blocked`)
-- files touched
-- commands run with exit codes, preserving every command in execution order
-- for each non-zero command, the later equivalent-or-broader relevant command
-  that exited zero, when one exists
-- deviations from the Brief or scope, including any out-of-scope work
+- <the orchestrator inserts the complete authoritative Shared corrected-failure
+  result fields defined below>
+- Direct-specific details: the selected mode, compliance with its mode
+  obligations, and any deviation from the confirmed Brief
 ```
 
 ### Shared implementation-result policy
@@ -289,32 +288,94 @@ default. Planned-batch self-repair and deferral never apply to Direct work,
 review-fix batches, bootstrap, target resolution, post-verification finding-ID
 fixes, or final verification.
 
-An intermediate non-zero command caused by command syntax or invocation is a
-corrected tooling error, rather than a mandatory stop, only when the same worker
-identifies that cause, later runs an equivalent-or-broader relevant command with
-exit code zero, returns final status `done`, and reports no deviation or
-out-of-scope work. The successful command MUST cover the failed command's
-relevant scope or a superset of it. Retain and surface the original failed
-command and its exit code together with the later successful command and its
-exit code; never hide or relabel the intermediate failure.
+**Shared corrected-failure result fields:** This is the single authoritative
+field set for every implementation or verification result. Whenever a route
+below references this field set, insert this exact list into the worker prompt;
+never send only the field-set label and never restate a divergent local copy:
+
+- status (`done`, `partial`, or `blocked`);
+- files touched;
+- every command in execution order with its exit code;
+- for each non-zero command, the failed command and exit code, diagnosed cause
+  and bounded correction when required, any successful authorized operation,
+  any later equivalent-or-broader relevant validation command and exit code for
+  a corrected failure or authoritative final validation command and exit code
+  for a recovered probe, and evidence that the validation either covers the
+  failed command's relevant scope or a superset or authoritatively proves the
+  requested final state;
+- final relevant validation state; and
+- deviations from the assigned Brief, change, task, or scope, including scope
+  expansion and out-of-scope work.
+
+Classify an intermediate non-zero command, whether caused by a syntax or
+invocation mistake or by a real implementation or verification failure, as
+corrected only when all of these are true:
+
+- the same worker diagnoses the cause and repairs it within the same bounded
+  invocation and authorized scope;
+- the worker retains the original failed command and non-zero exit code, the
+  diagnosed cause and bounded correction, and the later successful validation
+  command and exit code in execution order;
+- the later validation is equivalent to or broader than the failed command's
+  relevant scope and exits zero;
+- the final status is `done` and the final relevant validation state is green;
+  and
+- the worker reports no deviation, scope expansion, or out-of-scope work.
+
+The successful validation MUST cover the failed command's relevant scope or a
+superset of it. An eligible corrected failure is clean under this shared policy.
+Surface the complete incident evidence and follow the strict-default control
+point's existing clean-result route without an authorization question,
+mandatory stop, or archive delay solely because of that incident. Never hide or
+relabel the intermediate failure.
+
+Classify a failed command separately as a **recovered non-destructive probe**,
+rather than as a corrected implementation or validation failure, only when all
+of these are true:
+
+- the command is inspection-only, performs no mutation or destructive action,
+  and fails solely because expected pre-operation state is absent or not yet
+  established;
+- the same worker subsequently completes the authorized operation successfully
+  within the same bounded invocation and authorized scope;
+- the worker retains, in execution order, the failed probe and non-zero exit
+  code, the absent-state cause, the successful authorized operation, the
+  authoritative final validation command and exit code, and why that validation
+  proves the requested final state;
+- the authoritative final validation exits zero and proves the requested final
+  state;
+- the final status is `done` and the final relevant validation state is green;
+  and
+- the worker reports no deviation from the assigned Brief, scope expansion, or
+  out-of-scope work.
+
+A recovered probe requires no invented repair or equivalent rerun of the
+inspection command. An eligible recovered non-destructive probe is clean under
+this shared policy. Surface its complete ordered incident evidence and follow
+the strict-default control point's existing clean-result route without an
+authorization, continuation, or follow-up question, mandatory stop, or archive
+delay solely because of that incident. Never hide or relabel the failed probe or
+its exit code.
 
 A mandatory stop applies when any of these is true:
 
-- a non-zero command has no later equivalent-or-broader relevant command
-  exiting zero;
+- a result containing an intermediate non-zero command fails any item in the
+  authoritative corrected-failure eligibility checklist above;
+- a claimed recovered probe fails any item in the authoritative recovered-probe
+  eligibility checklist above, including when the command is destructive or
+  mutating rather than inspection-only;
+- the worker performs any destructive action before or after a failed command;
+- corrected-failure or recovered-probe evidence is incomplete, comes from
+  different workers, or relies on a successful command that is unrelated,
+  narrower than required, or does not authoritatively prove the requested final
+  state;
 - the final relevant verification state is red;
 - status is `partial` or `blocked`;
-- the worker reports a deviation;
-- the worker reports out-of-scope work;
-- a later successful command is unrelated to or narrower than the failed
-  command's relevant scope; or
+- the worker reports a deviation from the assigned Brief, change, task, or
+  scope;
+- the worker reports scope expansion;
+- the worker reports out-of-scope work; or
 - a TDD or expected failure remains red at batch end.
-
-A real verification or implementation failure remains a mandatory stop and is
-not a corrected tooling error. The same is true when the failed command was not
-caused by syntax or invocation, another worker performs the rerun, the final
-status is not `done`, a deviation or out-of-scope work is reported, the rerun is
-unrelated or narrower, or the final relevant verification state is red.
 
 For the strict default routes above, every listed condition is a mandatory
 stop. Only an eligible section-bounded planned-task batch may use the
@@ -340,6 +401,11 @@ serves the bounded batch. These classifications never apply to Direct work,
 review-fix batches, bootstrap, target resolution, post-verification finding-ID
 fixes, or final verification, and they do not make incomplete or red work
 complete.
+
+The recovered-probe classification removes no route-local prerequisite or
+planned-task-specific safeguard and changes no unrelated routing or
+planned-task behavior. Any unresolved failure or ambiguous probe classification
+remains subject to the mandatory-stop policy.
 
 On every mandatory stop, apply this shared mandatory-stop policy in two ordered,
 separate steps:
@@ -378,13 +444,15 @@ retry, dispatch a fallback worker, open reviews, or continue implementation.
 ### Fast direct execution
 
 The `general` worker implements only the bounded Brief. It MUST NOT run tests or
-reviews. When it reports `done`, use this explicit conclusion: Report the result
-explicitly as implemented but not verified and do not open the direct review
-gate. If it reports another status or any deviation, preserve those facts in the
-result instead of claiming the bounded Brief was implemented, report the
-retained result and command evidence, and then apply the shared mandatory-stop
-policy. Do not retry, broaden the Direct scope, open reviews, or dispatch
-another worker before the user selects an action.
+reviews. When its result is clean under the shared implementation-result policy
+and it reports `done`, use this explicit conclusion: Report the result explicitly
+as implemented but not verified and do not open the direct review gate. If it
+reports another status or any deviation, preserve those facts in the result
+instead of claiming the bounded Brief was implemented, and report the retained
+result and command evidence. For that or any other result that is not clean under
+the shared implementation-result policy, apply the shared mandatory-stop policy.
+Do not retry, broaden the Direct scope, open reviews, or dispatch another worker
+before the user selects an action.
 
 ### Direct review gate
 
@@ -492,21 +560,25 @@ Never persist this cache. Before dispatching `openspec-planner`,
 
 If the exact context key is already in the successful set, skip bootstrap. A
 different project root or store is a different context and MUST be bootstrapped.
-Otherwise dispatch one short `general` task with the prompt below and wait for
-it to succeed. Add the returned context key to the set only after success. If
-bootstrap blocks or fails, do not launch the OpenSpec worker; retain and report
-its status, diagnostic, commands, and exit codes, then apply the shared
-mandatory-stop policy. Only after a successful bootstrap may the requested
-OpenSpec worker be dispatched.
+Otherwise dispatch one short `general` task with the prompt below. Add the
+returned context key and dispatch the requested OpenSpec worker only when every
+blocking OpenSpec JSON readiness step succeeds and the result is otherwise clean
+under the shared implementation-result policy; an unavailable or non-zero
+`codegraph init` is a retained advisory warning, is excluded from that clean
+classification, and never blocks otherwise-green OpenSpec readiness. Any real
+readiness failure or other non-clean result remains a mandatory stop: retain and
+report its status, diagnostic, commands, and exit codes, then apply the shared
+mandatory-stop policy.
 
 Pass this bounded prompt to `general`, substituting the working directory and
 optional store id but adding no unrelated work:
 
 ```text
-Run only an OpenSpec readiness bootstrap for <working-directory> and return
-status, the resolved context key, warnings, commands run with exit codes, and
-the blocking reason if any. Do not delegate, inspect application code, or
-change files except for the one explicitly permitted initialization below.
+Run only an OpenSpec readiness bootstrap for <working-directory>. Return the
+authoritative Shared corrected-failure result fields supplied by the
+orchestrator, plus the resolved context key, advisory warnings, and the blocking
+reason if any. Do not delegate, inspect application code, or change files except
+for the one explicitly permitted initialization below.
 
 1. Treat OpenSpec JSON output as the only readiness source. For an explicit
    registered store <id>, run `openspec list --json --store <id>` and use
@@ -559,9 +631,10 @@ Pass references, never artifact bodies:
 Invoke the official skill <skill-name> for change <change-name>.
 Brief: <confirmed interview brief — planner only>
 Constraints: <scope limits; for the implementer, the exact task batch>
-Return: status (done|blocked|partial), files touched, commands run with exit
-codes, deviations or out-of-plan work, and the next recommended action. Compact
-— no artifact contents.
+Return: the authoritative Shared corrected-failure result fields supplied by the
+orchestrator, plus the route-specific next recommended action. For verification,
+also return verdict, task evidence, completion, conflicts, findings, and
+scenario coverage. Compact — no artifact contents.
 ```
 
 Every OpenSpec worker prompt MUST reference the bootstrap CodeGraph-ownership
@@ -599,15 +672,30 @@ the routing defined by the Review gate below.
 **Fresh-state invariant:** At every planned-task decision point—before the
 initial tree, before each implementer dispatch, after each result, before the
 combined deferred-work report, and before each retry—resolve the active change
-from OpenSpec again. In the active
-local context run `openspec status --change <name> --json`, retaining `--store
-<id>` for an explicit store. Require status to report the tasks artifact complete,
-read the resolved current `tasks.md`, and recompute the complete tree and next
-batch from that file. If status cannot resolve a complete tasks artifact or the
-file cannot be read, stop the planned-task cycle as `blocked`. Never use
-conversation history, a previous worker result, or a cached task list instead.
-Every instruction below to refresh or use fresh state means applying this
-invariant in full.
+from OpenSpec again in one immutable active context. For a local change, use the
+exact repo-local root returned by successful bootstrap as the working directory
+and context identity, and run `openspec status --change <name> --json` there.
+For an explicit store, retain the exact store id and append `--store <id>` to
+every applicable status or guarded verifier-task command; use `store:<id>` as
+the context identity and never infer, substitute, or switch to a local project
+path for that store. Propagate that exact local root or store id in every worker
+dispatch and all later refreshes.
+
+Require status to report the tasks artifact complete, read only its freshly
+resolved current `tasks.md`, and recompute the complete tree and next batch from
+that file. At each refresh, structurally validate owner-marker state before
+scheduling: ownership exists only for one exact `<!-- owner:
+openspec-verifier -->` marker that is the first nonblank line of the final named
+top-level task section. A section title, task wording, legacy verification
+prose, or any other comment does not establish ownership and remains ordinary
+planned work. Duplicate, malformed, misplaced, nested, or non-terminal owner
+markers are an invalid task-state conflict: stop without dispatching an
+implementer or verifier and change no checkbox. If status cannot resolve a
+complete tasks artifact, the file cannot be read, its resolved path or active
+context changes, or marker state is invalid, stop the planned-task cycle as
+`blocked`. Never use conversation history, a previous worker result, or a
+cached task list instead. Every instruction below to refresh or use fresh state
+means applying this invariant in full.
 
 **Tree rule:** From the fresh state, render the complete hierarchy before
 planned-task implementation begins and at every mandatory implementation stop.
@@ -630,16 +718,30 @@ fresh file, not from worker claims.
 ### Automatic planned-task loop and bounded batches
 
 **Automatic execution rule:** When pending tasks exist, do not ask a cadence or
-between-section continuation question. Apply the fresh-state invariant, select
-exactly the pending tasks in the next incomplete named section, and dispatch
-that one section as the bounded batch. After every clean result, apply the
-fresh-state invariant and automatically repeat for the next incomplete section.
-After an eligible deferrable result, apply the deferred-work and independence
-rules below instead of immediately asking a question. Continue the forward pass
-until no pending tasks remain, a hard blocker occurs, or no later section can be
-proved independent of every deferred batch. Do not display the tree, return
-control, or otherwise pause between runnable section batches. Never issue an
-unbounded "finish all tasks" prompt.
+between-section continuation question. Apply the fresh-state invariant. With no
+valid exact owner marker, preserve the existing behavior: verification-like
+titles or prose are ordinary, so select exactly the pending tasks in the next
+incomplete named section. With a valid marked terminal section, exclude every
+task in that section from every implementer batch and select the next incomplete
+ordinary section before it; do not skip, combine, or reorder ordinary sections
+merely because marked work exists later. Dispatch that one ordinary section as
+the bounded batch.
+
+When fresh state shows every ordinary task complete and only pending tasks from
+the valid marked terminal section remain, do not dispatch an implementer.
+Automatically dispatch exactly one `openspec-verifier` for the active change in
+the same exact local root or explicit store context, and route its single result
+through the verifier-owned completion branch in the Completion rule below. Do
+not redispatch a verifier while handling that result. After every clean result
+from an implementer, apply the fresh-state invariant and automatically repeat
+for the next incomplete section among the ordinary sections. After an eligible
+deferrable result,
+apply the deferred-work and independence rules below instead of immediately
+asking a question. Continue the forward pass until no runnable ordinary tasks
+remain, the marked-only verifier branch is reached, a hard blocker occurs, or
+no later ordinary section can be proved independent of every deferred batch. Do
+not display the tree, return control, or otherwise pause between runnable
+section batches. Never issue an unbounded "finish all tasks" prompt.
 
 Every planned-task implementer prompt MUST name the section, list the exact task
 identifiers and short summaries in the batch, require implementation of only
@@ -672,15 +774,14 @@ unchecked — including any task under diagnosis or repair, any incomplete or re
 task, and any task affected by a failure, unavailable relevant validation, or
 real blocker; the end of a batch never by itself completes a task.
 
-Its result contract MUST preserve every command in execution order with its
-exit code, identify the later equivalent-or-broader relevant successful rerun
-for each non-zero command when one exists, and report repair-progress evidence,
-every directly-necessary supporting adjustment, and every deviation or
-out-of-scope change. It must stop and report out-of-batch writes, functional
-expansion, destructive commands, unresolvable OpenSpec state, or a
-checked-task/red-validation conflict instead of repairing, reinterpreting, or
-working around them. If the fresh state shows an intended task or section is
-already complete, do not dispatch stale work; use the recomputed next batch.
+Its result contract MUST return the authoritative Shared corrected-failure
+result fields, plus repair-progress evidence and every directly-necessary
+supporting adjustment. It must stop and report out-of-batch
+writes, functional expansion, destructive commands, unresolvable OpenSpec
+state, or a checked-task/red-validation conflict instead of repairing,
+reinterpreting, or working around them. If the fresh state shows an intended
+task or section is already complete, do not dispatch stale work; use the
+recomputed next batch.
 
 **Deferred-evidence record:** Accumulate one record for every deferrable
 planned-task incident and every benign continuable deviation. For each deferred
@@ -723,14 +824,17 @@ relevant red evidence may enter final verification.
 ### Implementation stops and completion routing
 
 After every planned-task implementer result, apply the fresh-state invariant and
-classify the result under the planned-task exception to the shared
-implementation-result policy. A clean result or benign additional read or
-successful focused test may continue. An eligible local `partial`, local
-`blocked`, or red focused-test result enters the deferred-evidence record only
-after required bounded self-repair cannot make further demonstrable progress or
-the blocker is pre-existing or unrelated, while its incomplete tasks remain
-unchecked and no hard blocker exists. Every other non-clean result applies the
-shared strict default.
+first classify the result under the common shared implementation-result policy.
+An evidence-complete corrected incident is a clean result and follows the same
+automatic continuation route as any other clean result. For a result that is not
+clean under the common classification, apply the planned-task exception to the
+shared implementation-result policy. A benign additional read or successful
+focused test may continue. An eligible local `partial`, local `blocked`, or red
+focused-test result enters the deferred-evidence record only after required
+bounded self-repair cannot make further demonstrable progress or the blocker is
+pre-existing or unrelated, while its incomplete tasks remain unchecked and no
+hard blocker exists. Every other non-clean result applies the shared strict
+default.
 
 A planned-loop hard blocker exists when the worker performs any write outside
 the assigned batch — including a claimed directly-necessary supporting
@@ -770,15 +874,44 @@ unexpected conflict during or after a dispatch is a mandatory stop. A clean
 `done` result does not prove overall completion; only the fresh-state invariant
 does.
 
-**Completion rule:** Whenever the fresh-state invariant shows no pending tasks,
-do not ask for continuation. Automatically dispatch
-`openspec-verifier` for the active change, subject to the same bootstrap gate.
-Verification requires the executed evidence defined below. If verification
-fails, blocks, or is incomplete, retain its status, commands, exit codes, and
-diagnostic, then apply the shared mandatory-stop policy before any retry,
-review, archive action, or worker dispatch. If verification succeeds, proceed
-directly to the existing Review gate below without changing its review choices,
-selection behavior, or fix routing.
+**Completion rule:** Apply the fresh-state invariant, exact active-context
+continuity, executed-evidence requirement, and shared implementation-result
+policy above to both final-verification entries. With no pending task and no
+verifier-owned completion pass already received, do not ask for continuation.
+Automatically dispatch `openspec-verifier` for the active change. When
+the exact `<!-- owner: openspec-verifier -->` terminal section is the only
+pending work, use the one verifier already dispatched by the automatic loop;
+do not dispatch another verifier while processing or after accepting its result.
+
+For that marked-only entry, propagate the exact repo-local root as the working
+directory or the exact explicit store id without local-path inference through
+the verifier prompt, `angel-ai verifier-tasks snapshot --change <name>` (with
+the same `--store <id>` when applicable), guarded completion, and result. Accept
+only the complete tuple: a result clean under the shared implementation-result
+policy, exact `status: done`, global `verdict: pass`, successful executed
+task-specific evidence for every captured marked task, exact `completion:
+completed`, no conflict, and no incomplete or red evidence. Every failure,
+`not-verified`, partial or blocked status, evidence gap, non-successful
+completion, stale snapshot, changed context or resolved path, or conflict is a
+mandatory stop before retry, review, archive, fallback checkbox changes, or any
+worker dispatch.
+
+For the ordinary unmarked entry, accept a clean exact `status: done`, global
+`verdict: pass`, successful executed verification evidence, no conflict or
+incomplete or red evidence, and `completion: not-attempted` (or the equivalent
+ordinary no-completion state). Retain its pass and command evidence and proceed
+directly to the existing Review gate; guarded completion is neither required nor
+permitted for this entry.
+
+After accepting the marked-only tuple, make one completion confirmation by applying the
+fresh-state invariant in that same context. Require the same resolved tasks
+artifact and path, complete artifact status, and no pending checkbox; any
+remaining task, changed resolution, unreadable state, or
+checked-task/red-evidence disagreement is a mandatory-stop conflict. Then retain
+and reuse the returned pass and command evidence as final verification and
+proceed directly to the existing Review gate without a second verifier. On
+either entry, a failed, blocked, or incomplete verification retains its status,
+commands, exit codes, and diagnostic; apply the shared mandatory-stop policy.
 
 ### Between phases
 
@@ -792,9 +925,9 @@ planned-task section batches chain without returning control.
 tests/build and reported commands with exit codes. Artifact reading alone is
 "reviewed, not verified" — always say which of the two you have.
 For planned OpenSpec work, the verifier runs the mandatory repository tests and
-build only after fresh task state shows all planned tasks complete; planned-task
-implementers run only their permitted bounded lint, typecheck, and minimum
-relevant test checks.
+build only after fresh task state shows either all planned tasks complete or
+only the valid marked terminal section pending; planned-task implementers run
+only their permitted bounded lint, typecheck, and minimum relevant test checks.
 
 ## Review gate (after verification, before archive)
 
@@ -827,14 +960,16 @@ authorize adjacent cleanup or any unselected finding. This finding-ID batch is
 outside the automatic planned-task loop: do not require `tasks.md` task/section
 identifiers or dispatch verification again merely because it uses
 `openspec-implementer`. Never delegate a fix for an unselected or
-SUGGESTION-only finding on your own initiative. After fixes land, the primary
-orchestrator MUST invoke ONE single-select `question`: **Archive without
-re-review (Recommended)** / **Re-run responsible reviewers**. Recommend archive
-without re-review. If the user requests confirmation, re-run only the reviewers
-whose findings were addressed. If every re-run reviewer reports `No findings.`,
-proceed to archive automatically. If a re-review reports new or pending
-findings, deduplicate them and return to the same findings-selection multi-select
-`question`, again with no option preselected.
+SUGGESTION-only finding on your own initiative. Treat the finding-ID fix as clean
+only when its result is clean under the shared implementation-result policy.
+After fixes land, require that clean classification. After a clean finding-ID
+fix result, the primary orchestrator MUST invoke ONE single-select `question`:
+**Archive without re-review (Recommended)** / **Re-run responsible reviewers**.
+Recommend archive without re-review. If the user requests confirmation, re-run
+only the reviewers whose findings were addressed. If every re-run reviewer
+reports `No findings.`, proceed to archive automatically. If a re-review reports
+new or pending findings, deduplicate them and return to the same
+findings-selection multi-select `question`, again with no option preselected.
 
 ## Language
 
