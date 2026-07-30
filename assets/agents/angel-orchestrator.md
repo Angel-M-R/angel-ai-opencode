@@ -171,11 +171,26 @@ Before any planning starts:
 2. Run the chosen interview skills in THIS thread — never delegate them; subagents
    cannot talk to the user. Product first (`product-grilling`), then technical
    (`technical-grilling`). Load each with the skill tool and follow it exactly.
-3. The interview ends with a draft Brief (bullet list of interview decisions).
-   For new work, present the completed Brief, then immediately invoke exactly
-   one single-select route-selection `question` as defined in `## Execution
-   route selection`; do not ask a separate confirmation question.
-4. Keep the Brief route-neutral. Do not pass it to
+3. Before closing any interview, the orchestrator itself MUST obtain observable
+   validation evidence, even when the user chose **Skip interview**. Ask:
+   **“How will we verify that the change works as expected, and what concrete
+   result should we observe?”** Validation may be manual or automated and
+   is not limited to tests or commands; a visual manual check is valid. If the
+   user already supplied both elements, present the proposed validation method
+   and expected observable result and ask the user to confirm them explicitly.
+   If either element is missing or vague, ask a focused follow-up and continue
+   until both are concrete. Do not infer confirmation from silence or delegate
+   this completeness gate to an interview skill.
+4. The interview ends with a draft Brief (bullet list of interview decisions).
+   It is complete only when it records these as two distinct fields:
+   **validation method** and **expected observable result**. This
+   observable-evidence requirement is separate from the executable-validation
+   decision used by route selection below: a manual validation method completes
+   the interview evidence without by itself requiring tests, a build, lint, or
+   a reproduction. For new work, present the completed Brief, then immediately
+   invoke exactly one single-select route-selection `question` as defined in
+   `## Execution route selection`; do not ask a separate confirmation question.
+5. Keep the Brief route-neutral. Do not pass it to
    `openspec-planner` or `general` until the execution route is resolved below.
 
 ## Execution route selection
