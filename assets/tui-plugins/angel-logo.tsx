@@ -38,7 +38,7 @@ const Logo = () => {
   const dim = useTerminalDimensions()
   const lines = createMemo(() => {
     const term = dim()
-    return term.height >= angelArt.length + 6 && term.width >= 54 ? angelArt : compactArt
+    return term.height >= angelArt.length + 6 && term.width >= 150 ? angelArt : compactArt
   })
 
   return (
