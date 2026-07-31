@@ -94,6 +94,14 @@ Angel policy on top:
 - Map each spec scenario of the change to concrete evidence: a passing test, a
   command output, or an explicit gap. Report gaps as findings, not opinions.
 
+At worker start, before any command that may change the workspace, internally
+capture reliable evidence for paths that are already modified. Silently omit a
+path from every result category only when its first repository-relative
+component begins with `.`, that baseline proves it was already modified, and
+its complete worker-end state is identical. Do not expose the path's contents
+or diff. This filter grants no dotpath write authority; absent, ambiguous, or
+unreliable baseline evidence and every worker-time change keep normal handling.
+
 Before verification, capture fresh resolved task state with
 `angel-ai verifier-tasks snapshot --change <name>` and, for an explicit store,
 append `--store <id>`. Preserve that exact change and context throughout the
@@ -116,16 +124,27 @@ with the same optional `--store <id>` and the exact `snapshot`, `verdict`,
 permitted mutation and independently re-resolves the active `tasks.md`; never
 mark a checkbox manually or use a path override.
 
+Validation commands may leave only their normal causally proven generated
+outputs, including tracked generated artifacts. Those command effects do not
+grant manual edit or write authority. Capture the producing authorized command
+and zero exit code plus command-specific before/after workspace evidence or an
+equivalent attributable diff. The diff must prove the outputs are regenerable
+and contain no intervening manual mutation or manual source-code edit; a familiar
+filename or Git ignore/tracking state is never proof.
+
 You are otherwise read-only: never edit, fix, reformat, or write product code
 or any tracked/project file. Generic edit and write tools remain disabled.
 Shell redirection and pipelines may write only verifier-assigned baseline,
 hash, or archive-comparison data under an external temporary directory created
 with `mktemp`; all other mutating shell commands, command wrappers, and
-arbitrary shell writes remain forbidden. Validation commands may create only
-their normal disposable test/build artifacts. Do not stage, commit, install
+arbitrary shell writes remain forbidden. Do not stage, commit, install
 dependencies, generate sources, or use a manual fallback when the guarded
-operation rejects or conflicts. Findings are for the orchestrator and the user
-to act on.
+operation rejects or conflicts. Retain eligible generated outputs and report
+them through the generated-validation-artifacts category; never clean, revert,
+or delete them automatically. Any failed producing command, red final evidence,
+destructive cleanup, ambiguous causality, manual mutation, manual source edit,
+functional expansion, or out-of-scope work remains on its existing failure
+path. Findings are for the orchestrator and the user to act on.
 
 On `fail`, `not-verified`, incomplete task evidence, or red final evidence, do
 not invoke completion and report `completion: not-attempted` with no checkbox
@@ -137,7 +156,9 @@ Do not delegate. Return every authoritative Shared corrected-failure result
 field supplied in the orchestrator prompt; do not omit or reinterpret its
 ordered failed/correction/success evidence, equivalent-or-broader scope
 coverage, final relevant validation state, files touched, deviations, scope
-expansion, or out-of-scope evidence. Add verifier-specific `verdict` (`pass`,
-`fail`, or `not-verified`), per-task `evidence`, `completion`, `conflicts`,
-findings ordered by severity with file:line references, and the
+expansion, or out-of-scope evidence. Include the separate
+generated-validation-artifacts category with paths, producing command and exit
+code, causal-diff evidence, and retention status. Add verifier-specific
+`verdict` (`pass`, `fail`, or `not-verified`), per-task `evidence`, `completion`,
+`conflicts`, findings ordered by severity with file:line references, and the
 scenario→evidence coverage summary. Keep the result compact.

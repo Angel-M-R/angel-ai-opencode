@@ -434,6 +434,238 @@ func TestOrchestratorMandatoryImplementationStopsContract(t *testing.T) {
 	)
 }
 
+func TestOrchestratorGeneratedValidationArtifactsResultContract(t *testing.T) {
+	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
+	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+	const heading = "**Generated-validation-artifacts result category:**"
+
+	if count := strings.Count(normalizedText(orchestrator), normalizedText(heading)); count != 1 {
+		t.Fatalf("authoritative generated-validation-artifacts category occurs %d times, want 1", count)
+	}
+	requireTextInOrder(t, section,
+		heading,
+		"This is the single authoritative generated-validation-artifacts category for every implementation or verification result.",
+		"Every result MUST include this category, using `none` when there are no eligible outputs.",
+		"generated paths",
+		"the producing authorized validation command and its zero exit code",
+		"the command-specific before/after workspace evidence or equivalent attributable diff",
+		"confirmation that the outputs remain retained in the workspace",
+	)
+	requireTextInOrder(t, section,
+		"Classify an output in this category only when all of these are true:",
+		"an authorized validation command exits zero",
+		"command-specific evidence attributes every created or modified path to that command",
+		"the output is regenerable",
+		"no intervening manual mutation occurred",
+		"the attributable diff contains no manual source-code edit",
+	)
+}
+
+func TestOrchestratorGeneratedValidationArtifactsPositiveCases(t *testing.T) {
+	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+	cases := []struct {
+		name     string
+		path     string
+		gitState string
+	}{
+		{name: "Next output may be ignored", path: "`.next/`", gitState: "ignored"},
+		{name: "CodeGraph output may be visible", path: "`.codegraph/`", gitState: "visible to Git"},
+		{name: "TypeScript metadata may be tracked", path: "`*.tsbuildinfo`", gitState: "tracked"},
+	}
+
+	requireTextInOrder(t, section,
+		"Eligibility does not depend on whether Git ignores or tracks an artifact and does not use a filename allowlist.",
+		"Eligible outputs remain in the workspace: do not clean, revert, delete, stage, or commit them automatically.",
+		"Do not report an eligible output as a deviation, scope expansion, or out-of-scope work, and do not request authorization solely because it exists.",
+	)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			requireTextInOrder(t, section, testCase.path, testCase.gitState)
+		})
+	}
+}
+
+func TestPreExistingUnchangedTopLevelDotpathFilter(t *testing.T) {
+	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
+	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+	const heading = "**Pre-existing unchanged top-level dotpath filter:**"
+	const propagation = "apply the authoritative pre-existing unchanged top-level dotpath filter"
+
+	if count := strings.Count(normalizedText(orchestrator), normalizedText(heading)); count != 1 {
+		t.Fatalf("authoritative pre-existing unchanged top-level dotpath filter occurs %d times, want 1", count)
+	}
+	requireTextInOrder(t, section,
+		heading,
+		"Before doing work, every worker that may audit the workspace MUST internally capture reliable worker-start evidence",
+		"For each candidate repository-relative path, inspect only its first component.",
+		"Silently omit the path before any result classification or reporting only when all of these are true:",
+		"the first component begins with `.`",
+		"the reliable worker-start evidence proves that the path was already modified",
+		"worker-end evidence proves that the path's complete state is identical to that baseline",
+		"For example, already-modified `.vscode/settings.json` that is identical at worker completion qualifies and is silently omitted.",
+		"A qualifying path MUST NOT appear in files touched, generated-validation-artifacts, deviations, scope expansion, out-of-scope work, or any other result category.",
+		"Establish and compare its state internally; do not expose its contents or diff.",
+		"The filter grants no authority to create or modify a dotpath.",
+		"When the first component does not begin with `.`, worker-start evidence is missing, ambiguous, or unreliable, or the path changes during the worker invocation, keep the path under normal generated-output, corrected-failure, deviation, scope, destructive-action, ambiguity, red-state, and mandatory-stop handling.",
+	)
+
+	routes := []struct {
+		name         string
+		startHeading string
+		endHeading   string
+	}{
+		{name: "Direct Safe", startHeading: "### Safe direct execution", endHeading: "### Fast direct execution"},
+		{name: "planned OpenSpec implementation", startHeading: "### Automatic planned-task loop and bounded batches", endHeading: "### Between phases"},
+		{name: "bounded Direct fix", startHeading: "### Direct review gate", endHeading: "## Delegation rules"},
+		{name: "bounded OpenSpec fix", startHeading: "## Review gate (after verification, before archive)", endHeading: "## Language"},
+		{name: "final OpenSpec verification", startHeading: "**Completion rule:**", endHeading: "### Between phases"},
+	}
+	for _, route := range routes {
+		t.Run(route.name, func(t *testing.T) {
+			requireTextInOrder(t, orchestratorSection(t, route.startHeading, route.endHeading), propagation)
+		})
+	}
+
+	implementer := readRepositoryAsset(t, "agents", "openspec-implementer.md")
+	requireTextInOrder(t, implementer,
+		"Before any work, internally capture reliable worker-start evidence for paths that are already modified.",
+		"Silently omit a path from every result category only when its first repository-relative component begins with `.`, that baseline proves it was already modified, and its complete worker-end state is identical.",
+		"Do not expose the path's contents or diff.",
+		"This filter grants no dotpath write authority; absent, ambiguous, or unreliable baseline evidence and every worker-time change keep normal handling.",
+	)
+
+	verifier := readRepositoryAsset(t, "agents", "openspec-verifier.md")
+	requireTextInOrder(t, verifier,
+		"At worker start, before any command that may change the workspace, internally capture reliable evidence for paths that are already modified.",
+		"Silently omit a path from every result category only when its first repository-relative component begins with `.`, that baseline proves it was already modified, and its complete worker-end state is identical.",
+		"Do not expose the path's contents or diff.",
+		"This filter grants no dotpath write authority; absent, ambiguous, or unreliable baseline evidence and every worker-time change keep normal handling.",
+	)
+}
+
+func TestOrchestratorGeneratedValidationArtifactsSafetyNegatives(t *testing.T) {
+	section := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
+	conditions := []string{
+		"the producing command exits non-zero",
+		"the final relevant validation state is red",
+		"the worker performs destructive cleanup or any other destructive action before or after producing an artifact",
+		"command-specific causal evidence is missing or ambiguous",
+		"an intervening manual mutation occurred",
+		"the attributable diff contains a manual source-code edit",
+		"the worker expands functional behavior beyond the assigned scope",
+		"the worker reports out-of-scope work",
+	}
+
+	for _, condition := range conditions {
+		t.Run(condition, func(t *testing.T) {
+			requireTextInOrder(t, section,
+				"Generated-validation-artifact eligibility does not apply when any of these is true:",
+				condition,
+				"apply the existing corrected-failure, recovered-probe, deviation, scope, and mandatory-stop rules",
+			)
+		})
+	}
+}
+
+func TestOrchestratorGeneratedValidationArtifactsRoutePropagation(t *testing.T) {
+	const classification = "apply the authoritative generated-validation-artifacts category"
+	routes := []struct {
+		name         string
+		startHeading string
+		endHeading   string
+		before       string
+		after        string
+	}{
+		{
+			name:         "Direct Safe",
+			startHeading: "### Safe direct execution",
+			endHeading:   "### Fast direct execution",
+			before:       "executable verification was available and run",
+			after:        "If executable verification is unavailable or its command/exit-code evidence is omitted",
+		},
+		{
+			name:         "planned OpenSpec implementation",
+			startHeading: "### Automatic planned-task loop and bounded batches",
+			endHeading:   "### Between phases",
+			before:       "Every planned-task implementer prompt MUST name the section, list the exact task identifiers and short summaries in the batch",
+			after:        "A planned-loop hard blocker exists",
+		},
+		{
+			name:         "bounded Direct fix",
+			startHeading: "### Direct review gate",
+			endHeading:   "## Delegation rules",
+			before:       "Only user-selected findings become work.",
+			after:        "Apply that policy to every other unsafe fix result.",
+		},
+		{
+			name:         "bounded OpenSpec fix",
+			startHeading: "## Review gate (after verification, before archive)",
+			endHeading:   "## Language",
+			before:       "Only findings the user selects become a task",
+			after:        "Treat the finding-ID fix as clean only when its result is clean under the shared implementation-result policy.",
+		},
+		{
+			name:         "final OpenSpec verification",
+			startHeading: "**Completion rule:**",
+			endHeading:   "### Between phases",
+			before:       "successful executed verification evidence",
+			after:        "a failed, blocked, or incomplete verification retains its status, commands, exit codes, and diagnostic",
+		},
+	}
+
+	for _, route := range routes {
+		t.Run(route.name, func(t *testing.T) {
+			section := orchestratorSection(t, route.startHeading, route.endHeading)
+			requireTextInOrder(t, section, route.before, route.after)
+			requireTextInOrder(t, section, classification)
+		})
+	}
+}
+
+func TestOpenSpecWorkersGeneratedValidationArtifactsBoundaries(t *testing.T) {
+	implementer := readRepositoryAsset(t, "agents", "openspec-implementer.md")
+	verifier := readRepositoryAsset(t, "agents", "openspec-verifier.md")
+
+	t.Run("implementer retains exact task and validation boundaries", func(t *testing.T) {
+		requireTextInOrder(t, implementer,
+			"Implement ONLY the task batch assigned in your task prompt.",
+			"Generated command effects do not grant authority for a manual source edit or widen the assigned task batch.",
+			"The implementer MUST NOT run the full repository test suite or any build.",
+			"Retain eligible generated outputs and report their command-specific attribution in the generated-validation-artifacts category; never clean, revert, or delete them automatically.",
+		)
+		requireTextInOrder(t, implementer,
+			"Return every authoritative Shared corrected-failure result field supplied in the orchestrator prompt",
+			"complete corrected-failure or recovered-probe evidence",
+			"final relevant validation state",
+			"deviations including scope expansion and out-of-scope work",
+			"generated-validation-artifacts category",
+			"repair-progress evidence",
+			"every directly-necessary supporting adjustment",
+			"route-specific next recommended action",
+		)
+	})
+
+	t.Run("verifier permits command effects without edit authority", func(t *testing.T) {
+			requireTextInOrder(t, verifier,
+				"Validation commands may leave only their normal causally proven generated outputs, including tracked generated artifacts.",
+				"Those command effects do not grant manual edit or write authority.",
+				"never edit, fix, reformat, or write product code or any tracked/project file",
+				"Do not stage, commit, install dependencies, generate sources",
+				"Retain eligible generated outputs and report them through the generated-validation-artifacts category; never clean, revert, or delete them automatically.",
+			)
+		requireTextInOrder(t, verifier,
+			"Return every authoritative Shared corrected-failure result field supplied in the orchestrator prompt",
+			"ordered failed/correction/success evidence",
+			"equivalent-or-broader scope coverage",
+			"final relevant validation state",
+			"files touched",
+			"deviations, scope expansion, or out-of-scope evidence",
+			"generated-validation-artifacts category",
+			"`verdict` (`pass`, `fail`, or `not-verified`)",
+		)
+	})
+}
+
 func TestOrchestratorPlannedBatchDeferralContract(t *testing.T) {
 	sharedPolicy := orchestratorSection(t, "### Shared implementation-result policy", "### Safe direct execution")
 	plannedLoop := orchestratorSection(t, "### Planned-task implementation state", "### Between phases")
@@ -1377,6 +1609,9 @@ func TestSelectedOrchestratorAssetIsCatalogedAndInstalledUnchanged(t *testing.T)
 		"recovered non-destructive probe",
 		"the same worker subsequently completes the authorized operation successfully",
 		"without an authorization, continuation, or follow-up question",
+		"Generated-validation-artifacts result category",
+		"the producing authorized validation command and its zero exit code",
+		"confirmation that the outputs remain retained in the workspace",
 	} {
 		if !strings.Contains(normalizedText(string(got)), normalizedText(contract)) {
 			t.Errorf("installed orchestrator is missing recovered-probe contract %q", contract)
@@ -1551,7 +1786,7 @@ func TestOpenSpecVerifierGuardedTaskCompletionContract(t *testing.T) {
 	)
 }
 
-func TestPlannerAndVerifierAssetsAreInstalledUnchanged(t *testing.T) {
+func TestOpenSpecWorkerAssetsAreCatalogedAndInstalledUnchanged(t *testing.T) {
 	assetsRoot := filepath.Join("..", "..", "assets")
 	assetSource := assetfs.Directory(assetsRoot)
 	categories, err := catalog.Load(assetSource)
@@ -1560,8 +1795,9 @@ func TestPlannerAndVerifierAssetsAreInstalledUnchanged(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"openspec-planner":  "openspec-planner.md",
-		"openspec-verifier": "openspec-verifier.md",
+		"openspec-implementer": "openspec-implementer.md",
+		"openspec-planner":     "openspec-planner.md",
+		"openspec-verifier":    "openspec-verifier.md",
 	}
 	var selected []catalog.Item
 	for _, category := range categories {
@@ -1580,7 +1816,7 @@ func TestPlannerAndVerifierAssetsAreInstalledUnchanged(t *testing.T) {
 		}
 	}
 	if len(selected) != len(want) {
-		t.Fatalf("selected planner/verifier assets = %v, want %d", selected, len(want))
+		t.Fatalf("selected OpenSpec worker assets = %v, want %d", selected, len(want))
 	}
 
 	configDir := t.TempDir()

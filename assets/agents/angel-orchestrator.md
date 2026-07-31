@@ -282,6 +282,8 @@ Mode obligations:
 - Fast: implement only the bounded Brief. Do not run tests or reviews.
 
 Return exactly:
+- <the orchestrator inserts the complete authoritative pre-existing unchanged
+  top-level dotpath filter defined below>
 - <the orchestrator inserts the complete authoritative Shared corrected-failure
   result fields defined below>
 - Direct-specific details: the selected mode, compliance with its mode
@@ -321,6 +323,86 @@ never send only the field-set label and never restate a divergent local copy:
 - final relevant validation state; and
 - deviations from the assigned Brief, change, task, or scope, including scope
   expansion and out-of-scope work.
+
+**Pre-existing unchanged top-level dotpath filter:** Before doing work, every
+worker that may audit the workspace MUST internally capture reliable
+worker-start evidence that identifies paths already modified and records their
+complete state sufficiently for exact worker-end comparison. For each candidate
+repository-relative path, inspect only its first component. Silently omit the
+path before any result classification or reporting only when all of these are
+true:
+
+- the first component begins with `.`;
+- the reliable worker-start evidence proves that the path was already modified;
+  and
+- worker-end evidence proves that the path's complete state is identical to
+  that baseline.
+
+For example, already-modified `.vscode/settings.json` that is identical at
+worker completion qualifies and is silently omitted. A qualifying path MUST NOT
+appear in files touched, generated-validation-artifacts, deviations, scope
+expansion, out-of-scope work, or any other result category. Establish and
+compare its state internally; do not expose its contents or diff.
+
+The filter grants no authority to create or modify a dotpath. When the first
+component does not begin with `.`, worker-start evidence is missing, ambiguous,
+or unreliable, or the path changes during the worker invocation, keep the path
+under normal generated-output, corrected-failure, deviation, scope,
+destructive-action, ambiguity, red-state, and mandatory-stop handling. A dot
+component nested below a non-dot first component does not qualify. Apply this
+filter at every workspace-audit boundary before applying any result category.
+Whenever dispatching a worker that may audit the workspace, insert this complete
+filter into its prompt; never send only the filter label.
+
+**Generated-validation-artifacts result category:** This is the single
+authoritative generated-validation-artifacts category for every implementation
+or verification result. Every result MUST include this category, using `none`
+when there are no eligible outputs. Each entry MUST report, in order:
+
+- generated paths;
+- the producing authorized validation command and its zero exit code;
+- the command-specific before/after workspace evidence or equivalent
+  attributable diff, including why the output is regenerable; and
+- confirmation that the outputs remain retained in the workspace.
+
+Classify an output in this category only when all of these are true:
+
+- an authorized validation command exits zero;
+- command-specific evidence attributes every created or modified path to that
+  command;
+- the output is regenerable;
+- no intervening manual mutation occurred; and
+- the attributable diff contains no manual source-code edit.
+
+Eligibility does not depend on whether Git ignores or tracks an artifact and
+does not use a filename allowlist. For example, evidence-complete `.next/`
+output may be ignored, `.codegraph/` output may be visible to Git, and
+`*.tsbuildinfo` output may be tracked; those names illustrate the causal rule
+but never establish eligibility by themselves. Eligible outputs remain in the
+workspace: do not clean, revert, delete, stage, or commit them automatically.
+Do not report an eligible output as a deviation, scope expansion, or
+out-of-scope work, and do not request authorization solely because it exists.
+This classification explains incidental effects of an already-authorized
+validation command; it does not authorize a command, a manual edit, unrelated
+generated activity, or any expansion of the assigned functional scope.
+
+Generated-validation-artifact eligibility does not apply when any of these is
+true:
+
+- the producing command exits non-zero;
+- the final relevant validation state is red;
+- the worker performs destructive cleanup or any other destructive action
+  before or after producing an artifact;
+- command-specific causal evidence is missing or ambiguous;
+- an intervening manual mutation occurred;
+- the attributable diff contains a manual source-code edit;
+- the worker expands functional behavior beyond the assigned scope; or
+- the worker reports out-of-scope work.
+
+In every such case, apply the existing corrected-failure, recovered-probe,
+deviation, scope, and mandatory-stop rules. Generated output never repairs a
+failed command or weakens those rules, and later green validation never
+suppresses a mandatory stop caused by a destructive action.
 
 Classify an intermediate non-zero command, whether caused by a syntax or
 invocation mistake or by a real implementation or verification failure, as
@@ -449,6 +531,11 @@ separate verifier. Treat Safe as clean only when all of these are true:
 - the worker reports the executable test/build commands and exit codes; and
 - the result is clean under the shared implementation-result policy.
 
+For every workspace audit, apply the authoritative pre-existing unchanged
+top-level dotpath filter before classifying paths. For every validation side
+effect, apply the authoritative generated-validation-artifacts category while
+preserving all Safe prerequisites and stops.
+
 If executable verification is unavailable or its command/exit-code evidence is
 omitted, retain the result and report it as not verified with status `partial`
 or `blocked`, then apply the shared mandatory-stop policy. Apply that policy to
@@ -501,6 +588,12 @@ authorizes only that finding's concrete bounded correction without another
 Brief confirmation; it does not authorize adjacent cleanup or any unselected
 finding. The fix prompt MUST NOT use `openspec-implementer` or include any
 unselected finding.
+
+For every workspace audit from that bounded fix, apply the authoritative
+pre-existing unchanged top-level dotpath filter before classifying paths. For
+validation side effects, apply the authoritative generated-validation-artifacts
+category without broadening the selected finding set or changing its existing
+verification prerequisites.
 
 The `general` fix worker must run the existing applicable tests and build
 commands and return their executable command/exit-code evidence. Treat the fix
@@ -789,6 +882,14 @@ unchecked — including any task under diagnosis or repair, any incomplete or re
 task, and any task affected by a failure, unavailable relevant validation, or
 real blocker; the end of a batch never by itself completes a task.
 
+For every workspace audit from the planned batch, apply the authoritative
+pre-existing unchanged top-level dotpath filter before classifying paths. For
+eligible focused-validation effects, apply the authoritative
+generated-validation-artifacts category. Retain those effects and their
+command-specific evidence separately from benign deviations; their paths do not
+widen the batch, authorize manual source edits, or remove any planned-loop hard
+blocker.
+
 Its result contract MUST return the authoritative Shared corrected-failure
 result fields, plus repair-progress evidence and every directly-necessary
 supporting adjustment. It must stop and report out-of-batch
@@ -918,6 +1019,12 @@ ordinary no-completion state). Retain its pass and command evidence and proceed
 directly to the existing Review gate; guarded completion is neither required nor
 permitted for this entry.
 
+For every workspace audit in either final-verification entry, apply the
+authoritative pre-existing unchanged top-level dotpath filter before classifying
+paths, and apply the authoritative generated-validation-artifacts category to
+causally proven validation effects without granting the verifier manual write
+authority or changing any completion prerequisite.
+
 After accepting the marked-only tuple, make one completion confirmation by applying the
 fresh-state invariant in that same context. Require the same resolved tasks
 artifact and path, complete artifact status, and no pending checkbox; any
@@ -975,8 +1082,13 @@ authorize adjacent cleanup or any unselected finding. This finding-ID batch is
 outside the automatic planned-task loop: do not require `tasks.md` task/section
 identifiers or dispatch verification again merely because it uses
 `openspec-implementer`. Never delegate a fix for an unselected or
-SUGGESTION-only finding on your own initiative. Treat the finding-ID fix as clean
-only when its result is clean under the shared implementation-result policy.
+SUGGESTION-only finding on your own initiative. For every workspace audit from
+the finding-ID fix, apply the authoritative pre-existing unchanged top-level
+dotpath filter before classifying paths. For eligible validation effects, apply
+the authoritative generated-validation-artifacts category without expanding the
+selected finding-ID batch or changing its strict-default stop behavior. Treat
+the finding-ID fix as clean only when its result is clean under the shared
+implementation-result policy.
 After fixes land, require that clean classification. After a clean finding-ID
 fix result, the primary orchestrator MUST invoke ONE single-select `question`:
 **Archive without re-review (Recommended)** / **Re-run responsible reviewers**.
