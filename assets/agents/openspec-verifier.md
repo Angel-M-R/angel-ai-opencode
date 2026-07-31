@@ -152,8 +152,9 @@ changes. If verification passes but guarded completion reports a conflict,
 retain `verdict: pass`, report `status: blocked` and `completion: conflict`,
 include the conflict diagnostics, and do not claim or attempt to mark any task.
 
-Do not delegate. Return every authoritative Shared corrected-failure result
-field supplied in the orchestrator prompt; do not omit or reinterpret its
+Do not delegate. Return every Shared corrected-failure result field defined by
+the orchestrator's shared implementation-result policy; do not omit or
+reinterpret its
 ordered failed/correction/success evidence, equivalent-or-broader scope
 coverage, final relevant validation state, files touched, deviations, scope
 expansion, or out-of-scope evidence. Include the separate

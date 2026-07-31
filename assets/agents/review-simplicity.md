@@ -61,20 +61,14 @@ bypass these limits; native permissions are not a complete sandbox.
 
 ## Step 1 — Discover the review scope
 
-Independently obtain the current working-tree context through Git/Bash; do not
-rely on an orchestrator-supplied patch. Inspect all of these categories:
-
-- staged changes (`git diff --cached`);
-- unstaged changes (`git diff`); and
-- untracked non-ignored files (discover them with
-  `git ls-files --others --exclude-standard` and read their non-secret
-  contents).
-
-Use Git status as a cross-check that all three categories were considered.
-Standard Git exclusions must keep ignored files out of scope. Never read a
-secret or a path denied by the read restrictions above, even when Git reports
-it. Supporting repository context may be read as needed, but findings must be
-grounded in concrete evidence from the local changes under review.
+Independently obtain the working-tree context through Git/Bash — never rely on
+an orchestrator-supplied patch. Inspect staged changes (`git diff --cached`),
+unstaged changes (`git diff`), and untracked non-ignored files
+(`git ls-files --others --exclude-standard`), cross-checking with Git status
+that all three categories were considered. Ignored files stay out of scope, and
+never read a secret or a read-denied path even when Git reports it. Supporting
+repository context may be read as needed, but findings must be grounded in
+concrete evidence from the local changes under review.
 
 ## Step 2 — Triage
 

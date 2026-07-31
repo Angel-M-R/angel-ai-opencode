@@ -185,8 +185,8 @@ Scope discipline:
 - If a task cannot be implemented as specified, report it as a blocker with the
   reason — do not silently reinterpret the spec.
 
-Do not delegate. Return every authoritative Shared corrected-failure result
-field supplied in the orchestrator prompt, preserving status
+Do not delegate. Return every Shared corrected-failure result field defined by
+the orchestrator's shared implementation-result policy, preserving status
 (`done`|`blocked`|`partial`), files touched, every command in execution order
 with exit codes, complete corrected-failure or recovered-probe evidence, final
 relevant validation state, and deviations including scope expansion and
