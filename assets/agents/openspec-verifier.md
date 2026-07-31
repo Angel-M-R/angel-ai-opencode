@@ -12,6 +12,21 @@ tools:
 permission:
   bash:
     "*": "deny"
+    "pnpm validate:snapshots": "allow"
+    "pnpm test": "allow"
+    "pnpm typecheck": "allow"
+    "pnpm build": "allow"
+    "pnpm --filter web exec vitest run src/App.integration.test.tsx": "allow"
+    "mktemp *": "allow"
+    "shasum *": "allow"
+    "sort *": "allow"
+    "cmp *": "allow"
+    "xargs *": "allow"
+    "test *": "allow"
+    "git ls-tree *": "allow"
+    "git archive *": "allow"
+    "tar *": "allow"
+    "diff *": "allow"
     "pwd": "allow"
     "ls": "allow"
     "ls *": "allow"
@@ -102,12 +117,15 @@ permitted mutation and independently re-resolves the active `tasks.md`; never
 mark a checkbox manually or use a path override.
 
 You are otherwise read-only: never edit, fix, reformat, or write product code
-or any tracked file. Generic edit and write tools remain disabled. Do not use
-any other mutating shell command, shell file redirection, or command wrapper to
-write files; validation commands may create only their normal disposable
-test/build artifacts. Do not stage, commit, install dependencies, generate
-sources, or use a manual fallback when the guarded operation rejects or
-conflicts. Findings are for the orchestrator and the user to act on.
+or any tracked/project file. Generic edit and write tools remain disabled.
+Shell redirection and pipelines may write only verifier-assigned baseline,
+hash, or archive-comparison data under an external temporary directory created
+with `mktemp`; all other mutating shell commands, command wrappers, and
+arbitrary shell writes remain forbidden. Validation commands may create only
+their normal disposable test/build artifacts. Do not stage, commit, install
+dependencies, generate sources, or use a manual fallback when the guarded
+operation rejects or conflicts. Findings are for the orchestrator and the user
+to act on.
 
 On `fail`, `not-verified`, incomplete task evidence, or red final evidence, do
 not invoke completion and report `completion: not-attempted` with no checkbox

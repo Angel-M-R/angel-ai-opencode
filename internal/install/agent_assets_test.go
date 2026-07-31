@@ -1473,6 +1473,21 @@ func TestOpenSpecVerifierGuardedTaskCompletionContract(t *testing.T) {
 		"edit: false",
 		"write: false",
 		`"*": "deny"`,
+		`"pnpm validate:snapshots": "allow"`,
+		`"pnpm test": "allow"`,
+		`"pnpm typecheck": "allow"`,
+		`"pnpm build": "allow"`,
+		`"pnpm --filter web exec vitest run src/App.integration.test.tsx": "allow"`,
+		`"mktemp *": "allow"`,
+		`"shasum *": "allow"`,
+		`"sort *": "allow"`,
+		`"cmp *": "allow"`,
+		`"xargs *": "allow"`,
+		`"test *": "allow"`,
+		`"git ls-tree *": "allow"`,
+		`"git archive *": "allow"`,
+		`"tar *": "allow"`,
+		`"diff *": "allow"`,
 		`"git status*": "allow"`,
 		`"git diff*": "allow"`,
 		`"rg *": "allow"`,
@@ -1487,8 +1502,16 @@ func TestOpenSpecVerifierGuardedTaskCompletionContract(t *testing.T) {
 			t.Errorf("missing verifier permission contract %q", contract)
 		}
 	}
-	if strings.Contains(frontmatter, "bash:\n    \"*\": \"allow\"") {
-		t.Error("verifier bash permission must not use a broad allow default")
+	for _, forbidden := range []string{
+		"bash:\n    \"*\": \"allow\"",
+		`"pnpm *": "allow"`,
+		`"sh *": "allow"`,
+		`"bash *": "allow"`,
+		`"zsh *": "allow"`,
+	} {
+		if strings.Contains(frontmatter, forbidden) {
+			t.Errorf("verifier permission contract must not contain broad authorization %q", forbidden)
+		}
 	}
 
 	requireTextInOrder(t, body,
@@ -1503,9 +1526,12 @@ func TestOpenSpecVerifierGuardedTaskCompletionContract(t *testing.T) {
 		"may you invoke `angel-ai verifier-tasks complete --change <name>`",
 		"the exact `snapshot`, `verdict`, `tasks`, and `evidence` JSON on stdin",
 		"This guarded operation is the only permitted mutation",
-		"never edit, fix, reformat, or write product code or any tracked file",
+		"never edit, fix, reformat, or write product code or any tracked/project file",
 		"Generic edit and write tools remain disabled.",
-		"Do not use any other mutating shell command",
+		"Shell redirection and pipelines may write only verifier-assigned baseline,",
+		"hash, or archive-comparison data under an external temporary directory created",
+		"with `mktemp`; all other mutating shell commands, command wrappers, and",
+		"arbitrary shell writes remain forbidden.",
 		"On `fail`, `not-verified`, incomplete task evidence, or red final evidence, do not invoke completion",
 		"report `completion: not-attempted` with no checkbox changes",
 		"If verification passes but guarded completion reports a conflict",
