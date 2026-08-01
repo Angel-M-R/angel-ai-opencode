@@ -44,7 +44,7 @@ const Logo = ({ api }: { api: TuiPluginApi }) => {
   return (
     <box flexDirection="column" alignItems="center">
       {lines().map((line) => (
-        <text fg={api.theme.current.primary}>{line}</text>
+        <text fg={api.theme.current.secondary}>{line}</text>
       ))}
     </box>
   )
