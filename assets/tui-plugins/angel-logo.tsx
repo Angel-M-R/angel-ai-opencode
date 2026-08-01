@@ -34,7 +34,7 @@ const mcpStatusStyle = {
 
 const spinnerFrames = ["◐", "◓", "◑", "◒"]
 
-const Logo = () => {
+const Logo = ({ api }: { api: TuiPluginApi }) => {
   const dim = useTerminalDimensions()
   const lines = createMemo(() => {
     const term = dim()
@@ -44,7 +44,7 @@ const Logo = () => {
   return (
     <box flexDirection="column" alignItems="center">
       {lines().map((line) => (
-        <text fg="magenta">{line}</text>
+        <text fg={api.theme.current.primary}>{line}</text>
       ))}
     </box>
   )
@@ -124,7 +124,7 @@ const tui: TuiPlugin = async (api) => {
       home_logo() {
         return (
           <box flexDirection="column" alignItems="center">
-            <Logo />
+            <Logo api={api} />
             <McpStatus api={api} />
           </box>
         )
