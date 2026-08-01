@@ -896,11 +896,12 @@ func (m Model) View() string {
 			if m.extraSelected[j] {
 				check = checkedStyle.Render("[x]")
 			}
-			b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, extra.Label))
-			b.WriteString("       " + helpStyle.Render(extra.Description) + "\n")
-		}
-		b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
-	case agentModelsPhase:
+				b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, extra.Label))
+				b.WriteString("       " + helpStyle.Render(extra.Description) + "\n")
+			}
+			b.WriteString("\n" + helpStyle.Render("Si ya está instalado, desmarcarlo no lo desinstalará") + "\n")
+			b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
+		case agentModelsPhase:
 		b.WriteString(m.agentModelsView())
 	case analyzing:
 		b.WriteString(m.loadingView("Analizando archivos…"))

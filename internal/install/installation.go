@@ -175,7 +175,7 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 		}
 	}
 
-	opencodeFile, ok, err := prepareJSONObject(
+	opencodeFile, ok, err := prepareOpenCodeJSONObject(
 		filepath.Join(request.ConfigDir, "opencode.json"),
 		"https://opencode.ai/config.json",
 		fragments,
@@ -312,15 +312,58 @@ func readAssetJSONObject(source assets.Source, sourcePath string) (map[string]an
 func prepareJSONObject(
 	path, defaultSchema string,
 	patches []map[string]any,
+	resolvePluginIdentity pluginIdentityResolver,
+) (preparedFile, bool, error) {
+	return prepareJSONObjectCore(path, defaultSchema, patches, resolvePluginIdentity, nil, false)
+}
+
+func prepareOpenCodeJSONObject(
+	path, defaultSchema string,
+	patches []map[string]any,
 	codegraphSpecified, codegraphSelected bool,
 	codegraphObject map[string]any,
+) (preparedFile, bool, error) {
+	var mutate func(map[string]any) error
+	if codegraphSpecified {
+		mutate = func(config map[string]any) error {
+			mcp, _ := config["mcp"].(map[string]any)
+			if codegraphSelected {
+				if mcp == nil {
+					mcp = map[string]any{}
+					config["mcp"] = mcp
+				}
+				cloned, err := cloneJSONObject(codegraphObject)
+				if err != nil {
+					return err
+				}
+				mcp["codegraph"] = cloned
+			} else if mcp != nil {
+				delete(mcp, "codegraph")
+				if len(mcp) == 0 {
+					delete(config, "mcp")
+				}
+			}
+			return nil
+		}
+	}
+	return prepareJSONObjectCore(
+		path, defaultSchema, patches, pluginIdentity, mutate, codegraphSpecified && codegraphSelected,
+	)
+}
+
+func prepareJSONObjectCore(
+	path, defaultSchema string,
+	patches []map[string]any,
+	resolvePluginIdentity pluginIdentityResolver,
+	mutate func(map[string]any) error,
+	createForMutation bool,
 ) (preparedFile, bool, error) {
 	raw, err := os.ReadFile(path)
 	exists := err == nil
 	if err != nil && !os.IsNotExist(err) {
 		return preparedFile{}, false, err
 	}
-	if !exists && len(patches) == 0 && (!codegraphSpecified || !codegraphSelected) {
+	if !exists && len(patches) == 0 && !createForMutation {
 		return preparedFile{}, false, nil
 	}
 
@@ -334,31 +377,17 @@ func prepareJSONObject(
 	if err != nil {
 		return preparedFile{}, false, err
 	}
-	if len(patches) > 0 || (codegraphSpecified && codegraphSelected) {
+	if len(patches) > 0 || createForMutation {
 		if _, ok := config["$schema"]; !ok {
 			config["$schema"] = defaultSchema
 		}
 	}
 	for _, patch := range patches {
-		merge(config, patch)
+		mergeWithPluginIdentity(config, patch, resolvePluginIdentity)
 	}
-	if codegraphSpecified {
-		mcp, _ := config["mcp"].(map[string]any)
-		if codegraphSelected {
-			if mcp == nil {
-				mcp = map[string]any{}
-				config["mcp"] = mcp
-			}
-			cloned, err := cloneJSONObject(codegraphObject)
-			if err != nil {
-				return preparedFile{}, false, err
-			}
-			mcp["codegraph"] = cloned
-		} else if mcp != nil {
-			delete(mcp, "codegraph")
-			if len(mcp) == 0 {
-				delete(config, "mcp")
-			}
+	if mutate != nil {
+		if err := mutate(config); err != nil {
+			return preparedFile{}, false, err
 		}
 	}
 
@@ -392,6 +421,10 @@ func cloneJSONObject(source map[string]any) (map[string]any, error) {
 
 func prepareUIExtras(prepared *preparedInstallation, request InstallationRequest) error {
 	var patches []map[string]any
+	selectedPublishedPlugins := map[string]bool{
+		"opencode-open-in-app":       request.Extras[openInAppOptionKey],
+		"opencode-openspec-task-tui": request.Extras[openSpecTaskTUIOptionKey],
+	}
 	if request.Extras["angel-logo"] {
 		for _, name := range angelLogoFiles {
 			file, err := prepareSourceFile(
@@ -415,13 +448,17 @@ func prepareUIExtras(prepared *preparedInstallation, request InstallationRequest
 	if request.Extras["subagent-statusline"] {
 		patches = append(patches, map[string]any{"plugin": []any{"opencode-subagent-statusline"}})
 	}
+	if request.Extras[openInAppOptionKey] {
+		patches = append(patches, map[string]any{"plugin": []any{"opencode-open-in-app"}})
+	}
+	if request.Extras[openSpecTaskTUIOptionKey] {
+		patches = append(patches, map[string]any{"plugin": []any{"opencode-openspec-task-tui"}})
+	}
 	file, ok, err := prepareJSONObject(
 		filepath.Join(request.ConfigDir, "tui.json"),
 		"https://opencode.ai/tui.json",
 		patches,
-		false,
-		false,
-		nil,
+		selectedTUIPluginIdentityResolver(request.ConfigDir, selectedPublishedPlugins),
 	)
 	if err != nil {
 		return err

@@ -3,9 +3,11 @@ package install
 import "fmt"
 
 const (
-	codegraphOptionKey = "codegraph"
-	openSpecOptionKey  = "openspec"
-	cmuxOptionKey      = "cmux"
+	codegraphOptionKey       = "codegraph"
+	openSpecOptionKey        = "openspec"
+	cmuxOptionKey            = "cmux"
+	openInAppOptionKey       = "opencode-open-in-app"
+	openSpecTaskTUIOptionKey = "opencode-openspec-task-tui"
 )
 
 // ExtraOption is a standalone integration or UI toggle applied at the end of
@@ -49,6 +51,18 @@ var ExtraOptions = []ExtraOption{
 		Key:             "subagent-statusline",
 		Label:           "Subagent statusline",
 		Description:     "Plugin de terceros (npm): actividad de los workers en la sidebar",
+		DefaultSelected: true,
+	},
+	{
+		Key:             openInAppOptionKey,
+		Label:           "Open in App",
+		Description:     "Plugin npm: abre archivos y recursos en sus aplicaciones nativas",
+		DefaultSelected: true,
+	},
+	{
+		Key:             openSpecTaskTUIOptionKey,
+		Label:           "OpenSpec task TUI",
+		Description:     "Plugin npm: muestra el progreso de tareas de OpenSpec en la sidebar",
 		DefaultSelected: true,
 	},
 	{

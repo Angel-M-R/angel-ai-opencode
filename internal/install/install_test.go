@@ -258,6 +258,208 @@ func TestApplyMergesTUIPluginsIdempotently(t *testing.T) {
 	}
 }
 
+func TestApplyMigratesPublishedTUIPlugins(t *testing.T) {
+	assets := t.TempDir()
+	target := t.TempDir()
+	tuiPath := filepath.Join(target, "tui.json")
+	absoluteOpenInApp := filepath.Join(t.TempDir(), "open-in-app.js")
+	relativeOpenInApp := filepath.Join("plugins", "open-in-app-relative.js")
+	relativeOpenSpecTask := filepath.Join("plugins", "openspec-task-relative.js")
+	fileOpenSpecTask := "file:plugins/openspec-task-file.js"
+	unrecognized := filepath.Join("plugins", "unrecognized.js")
+	commentDecoy := filepath.Join("plugins", "comment-decoy.js")
+	stringDecoy := filepath.Join("plugins", "string-decoy.js")
+	nestedDecoy := filepath.Join("plugins", "nested-decoy.js")
+
+	write(t, absoluteOpenInApp, `export default { id: "opencode-open-in-app" }`)
+	write(t, filepath.Join(target, relativeOpenInApp), `export default { id: "opencode-open-in-app" }`)
+	write(t, filepath.Join(target, relativeOpenSpecTask), `export default { id: "openspec-task-progress" }`)
+	write(t, filepath.Join(target, "plugins", "openspec-task-file.js"), `export default { id: "openspec-task-progress" }`)
+	write(t, filepath.Join(target, unrecognized), `export default { id: "unrelated-local-plugin" }`)
+	write(t, filepath.Join(target, commentDecoy), `// export default { id: "opencode-open-in-app" }
+export default {}`)
+	write(t, filepath.Join(target, stringDecoy), `const example = 'export default { id: "opencode-open-in-app" }'
+export default {}`)
+	write(t, filepath.Join(target, nestedDecoy), `export default { metadata: { id: "opencode-open-in-app" } }`)
+
+	writePlugins := func(plugins []string) []byte {
+		t.Helper()
+		raw, err := json.MarshalIndent(map[string]any{
+			"$schema": "https://opencode.ai/tui.json",
+			"plugin":  plugins,
+		}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw = append(raw, '\n')
+		write(t, tuiPath, string(raw))
+		return raw
+	}
+	readPlugins := func() []string {
+		t.Helper()
+		var config struct {
+			Plugin []string `json:"plugin"`
+		}
+		if err := json.Unmarshal(readFile(t, tuiPath), &config); err != nil {
+			t.Fatal(err)
+		}
+		return config.Plugin
+	}
+
+	writePlugins([]string{
+		"unrelated-before",
+		absoluteOpenInApp,
+		unrecognized,
+		commentDecoy,
+		stringDecoy,
+		nestedDecoy,
+		relativeOpenInApp,
+		"unrelated-middle",
+		relativeOpenSpecTask,
+		fileOpenSpecTask,
+		"opencode-open-in-app@1.2.3",
+		"opencode-openspec-task-tui@2.3.4",
+		"unrelated-after",
+	})
+	if _, err := install.ApplyInstallation(install.InstallationRequest{
+		Extras: map[string]bool{
+			"opencode-open-in-app":       true,
+			"opencode-openspec-task-tui": true,
+		},
+		Assets:    assetfs.Directory(assets),
+		ConfigDir: target,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wantMigrated := []string{
+		"unrelated-before",
+		"opencode-open-in-app",
+		unrecognized,
+		commentDecoy,
+		stringDecoy,
+		nestedDecoy,
+		"unrelated-middle",
+		"opencode-openspec-task-tui",
+		"unrelated-after",
+	}
+	if got := readPlugins(); !reflect.DeepEqual(got, wantMigrated) {
+		t.Fatalf("migrated TUI plugins = %v, want %v", got, wantMigrated)
+	}
+
+	deselectedPlugins := []string{
+		absoluteOpenInApp,
+		"opencode-open-in-app@9.9.9",
+		"opencode-open-in-app@8.8.8",
+		relativeOpenSpecTask,
+		fileOpenSpecTask,
+		"unrelated-after",
+	}
+	writePlugins(deselectedPlugins)
+	if _, err := install.ApplyInstallation(install.InstallationRequest{
+		Extras: map[string]bool{
+			"opencode-open-in-app":       false,
+			"opencode-openspec-task-tui": false,
+			"subagent-statusline":        true,
+		},
+		Assets:    assetfs.Directory(assets),
+		ConfigDir: target,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wantDeselected := append(append([]string(nil), deselectedPlugins...), "opencode-subagent-statusline")
+	if got := readPlugins(); !reflect.DeepEqual(got, wantDeselected) {
+		t.Fatalf("TUI plugins with published extras deselected = %v, want %v", got, wantDeselected)
+	}
+}
+
+func TestApplyAppendsSelectedPublishedTUIPluginWhenAbsent(t *testing.T) {
+	assets := t.TempDir()
+	target := t.TempDir()
+	tuiPath := filepath.Join(target, "tui.json")
+	unrelatedPlugins := []string{
+		"unrelated-before",
+		"unrelated-plugin@1.2.3",
+		"unrelated-after",
+	}
+	raw, err := json.MarshalIndent(map[string]any{
+		"$schema": "https://opencode.ai/tui.json",
+		"plugin":  unrelatedPlugins,
+	}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, tuiPath, string(append(raw, '\n')))
+
+	if _, err := install.ApplyInstallation(install.InstallationRequest{
+		Extras: map[string]bool{
+			"opencode-open-in-app": true,
+		},
+		Assets:    assetfs.Directory(assets),
+		ConfigDir: target,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var config struct {
+		Plugin []string `json:"plugin"`
+	}
+	if err := json.Unmarshal(readFile(t, tuiPath), &config); err != nil {
+		t.Fatal(err)
+	}
+	want := append(append([]string(nil), unrelatedPlugins...), "opencode-open-in-app")
+	if !reflect.DeepEqual(config.Plugin, want) {
+		t.Fatalf("TUI plugins = %v, want %v", config.Plugin, want)
+	}
+}
+
+func TestTUIPluginIdentityResolverDoesNotExecuteBundle(t *testing.T) {
+	assets := t.TempDir()
+	target := t.TempDir()
+	tuiPath := filepath.Join(target, "tui.json")
+	bundleEntry := filepath.Join("plugins", "side-effect.js")
+	bundlePath := filepath.Join(target, bundleEntry)
+	sentinelPath := filepath.Join(target, "bundle-executed")
+	sentinelJSON, err := json.Marshal(sentinelPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, bundlePath, `import { writeFileSync } from "node:fs";
+writeFileSync(`+string(sentinelJSON)+`, "executed");
+export default { id: "opencode-open-in-app" };
+`)
+	write(t, tuiPath, `{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["`+filepath.ToSlash(bundleEntry)+`"]
+}`)
+
+	if _, err := os.Stat(sentinelPath); !os.IsNotExist(err) {
+		t.Fatalf("side-effect sentinel existed before resolution: %v", err)
+	}
+	if _, err := install.ApplyInstallation(install.InstallationRequest{
+		Extras: map[string]bool{
+			"opencode-open-in-app": true,
+		},
+		Assets:    assetfs.Directory(assets),
+		ConfigDir: target,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var config struct {
+		Plugin []string `json:"plugin"`
+	}
+	if err := json.Unmarshal(readFile(t, tuiPath), &config); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"opencode-open-in-app"}
+	if !reflect.DeepEqual(config.Plugin, want) {
+		t.Fatalf("TUI plugins = %v, want %v", config.Plugin, want)
+	}
+	if _, err := os.Stat(sentinelPath); !os.IsNotExist(err) {
+		t.Fatalf("bundle was executed; side-effect sentinel stat error = %v", err)
+	}
+}
+
 func containsLineWith(lines []string, expected string) bool {
 	for _, line := range lines {
 		if strings.Contains(line, expected) {

@@ -849,12 +849,20 @@ func TestCompletionViewUsesNavigationAndExplicitExitKeys(t *testing.T) {
 	}
 }
 
+func TestExtrasViewShowsNonUninstallNotice(t *testing.T) {
+	model := New(nil, assetfs.Directory(t.TempDir()), t.TempDir())
+	model.phase = extrasPhase
+
+	const notice = "Si ya está instalado, desmarcarlo no lo desinstalará"
+	if got := strings.Count(stripANSI(model.View()), notice); got != 1 {
+		t.Fatalf("non-uninstall notice count = %d, want 1", got)
+	}
+}
+
 func TestCMUXSelectionDefaultsAndExplicitSelection(t *testing.T) {
 	model := New(nil, assetfs.Directory(t.TempDir()), t.TempDir())
-	cmuxIndex := -1
 	for index, extra := range model.extras {
 		if extra.Key == "cmux" {
-			cmuxIndex = index
 			if model.extraSelected[index] {
 				t.Fatal("cmux must start unselected")
 			}
@@ -864,16 +872,70 @@ func TestCMUXSelectionDefaultsAndExplicitSelection(t *testing.T) {
 			t.Errorf("existing extra %q must remain selected by default", extra.Key)
 		}
 	}
-	if cmuxIndex < 0 {
-		t.Fatal("cmux extra is missing")
+
+	model.phase = extrasPhase
+	for index, extra := range model.extras {
+		if extra.Key != "cmux" {
+			continue
+		}
+		model.cursor = index
+		updated, _ := model.updateExtras(" ")
+		model = updated.(Model)
+		if !model.chosenExtras()["cmux"] {
+			t.Fatal("explicit cmux selection was not included in chosen extras")
+		}
+		return
+	}
+	t.Fatal("cmux extra is missing")
+}
+
+func TestPublishedTUIPluginSelectionDefaultsOrderingAndIndependence(t *testing.T) {
+	model := New(nil, assetfs.Directory(t.TempDir()), t.TempDir())
+	indexes := map[string]int{}
+	for index, extra := range model.extras {
+		indexes[extra.Key] = index
+	}
+
+	statuslineIndex, found := indexes["subagent-statusline"]
+	if !found {
+		t.Fatal("Subagent statusline extra is missing")
+	}
+	openInAppIndex, found := indexes["opencode-open-in-app"]
+	if !found {
+		t.Fatal("Open in App extra is missing")
+	}
+	openSpecTaskIndex, found := indexes["opencode-openspec-task-tui"]
+	if !found {
+		t.Fatal("OpenSpec task TUI extra is missing")
+	}
+	if openInAppIndex != statuslineIndex+1 || openSpecTaskIndex != openInAppIndex+1 {
+		t.Fatalf(
+			"published TUI extra indexes = (%d, %d), want adjacent after Subagent statusline at %d",
+			openInAppIndex,
+			openSpecTaskIndex,
+			statuslineIndex,
+		)
+	}
+	if !model.extraSelected[openInAppIndex] || !model.extraSelected[openSpecTaskIndex] {
+		t.Fatal("published TUI plugins must start selected")
 	}
 
 	model.phase = extrasPhase
-	model.cursor = cmuxIndex
+	model.cursor = openInAppIndex
 	updated, _ := model.updateExtras(" ")
 	model = updated.(Model)
-	if !model.chosenExtras()["cmux"] {
-		t.Fatal("explicit cmux selection was not included in chosen extras")
+	selected := model.chosenExtras()
+	if selected["opencode-open-in-app"] || !selected["opencode-openspec-task-tui"] {
+		t.Fatalf("Open in App toggle changed independent selections: %v", selected)
+	}
+	updated, _ = model.updateExtras(" ")
+	model = updated.(Model)
+	model.cursor = openSpecTaskIndex
+	updated, _ = model.updateExtras(" ")
+	model = updated.(Model)
+	selected = model.chosenExtras()
+	if !selected["opencode-open-in-app"] || selected["opencode-openspec-task-tui"] {
+		t.Fatalf("OpenSpec task TUI toggle changed independent selections: %v", selected)
 	}
 }
 
