@@ -315,7 +315,11 @@ divergent local copy.
   (or the authoritative final validation for a recovered probe), and evidence
   that it covers the failed command's relevant scope or proves the requested
   final state;
-- final relevant validation state; and
+- final relevant validation state;
+- control diagnostics, as `none` when empty or structured records in
+  observation order, each naming the applicable control point, the read-only
+  bookkeeping observation, state `complete` or `incomplete`, and the green
+  final-state evidence supporting continuation; and
 - deviations from the assigned Brief, change, task, or scope, including scope
   expansion and out-of-scope work.
 
@@ -335,6 +339,36 @@ every workspace-audit boundary on every route, before any result
 classification. Insert this complete filter into `general` prompts;
 `openspec-implementer` and `openspec-verifier` already carry it in their
 definitions.
+
+**Control diagnostics.** Every result at every control point MUST include this
+category, using `none` when empty. Classify a record here only when ALL hold:
+the observation is internal read-only bookkeeping; no command failed; no
+mutation, destructive action, or touched file occurred; final status is
+`done`; and final relevant validation is green. Each structured record stays in
+observation order and reports the applicable control point, the bookkeeping
+observation, state `complete` or `incomplete`, and the green final-state
+evidence supporting continuation. Use `incomplete` only when descriptive
+bookkeeping details are incomplete but every classification fact above and the
+green final state remain established; missing or ambiguous safety or final-state
+evidence is ineligible. An eligible control diagnostic remains visible but is
+clean under this policy: follow the control point's existing clean-result route
+without an authorization question, mandatory stop, archive delay, or route
+change for that record alone.
+
+`control diagnostics` and `deviations` are mutually exclusive at the result
+level. A result with any real deviation, functional or scope expansion, or
+out-of-scope work MUST report `control diagnostics: none`; a result with any
+control diagnostic MUST report `deviations: none`. Never relabel a failed
+command, mutation, touched file, destructive action, corrected failure,
+recovered probe, generated validation artifact, planned-task incident, or
+route-local prerequisite as a control diagnostic. Such facts retain their
+existing classification and routing. In particular, a claimed diagnostic that
+involves a destructive action or unreported mutation or touched file, or that
+coexists with `partial` or `blocked` status or red final relevant validation,
+is non-clean and keeps the applicable deviation, scope, destructive-action,
+red-state, and mandatory-stop handling. This category changes no workflow
+prerequisite and no corrected-failure, recovered-probe,
+generated-validation-artifact, planned-task, or route-local rule.
 
 **Generated-validation-artifacts category.** Every result MUST include this
 category, using `none` when empty. Each entry reports, in order: the generated
