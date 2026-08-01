@@ -33,7 +33,7 @@
   },
   "theme": {
     "primary": "blue",
-    "secondary": "purple",
+    "secondary": "blue",
     "accent": "blue",
     "error": "errorRed",
     "warning": "warningOrange",
