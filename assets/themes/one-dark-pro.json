@@ -32,7 +32,7 @@
     "diffRemovedBackground": "#2A1A1A"
   },
   "theme": {
-    "primary": "magenta",
+    "primary": "purple",
     "secondary": "blue",
     "accent": "blue",
     "error": "errorRed",
