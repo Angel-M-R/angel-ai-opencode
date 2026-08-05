@@ -5,6 +5,7 @@ import "fmt"
 const (
 	codegraphOptionKey       = "codegraph"
 	openSpecOptionKey        = "openspec"
+	tsgoOptionKey            = "tsgo"
 	cmuxOptionKey            = "cmux"
 	openInAppOptionKey       = "opencode-open-in-app"
 	openSpecTaskTUIOptionKey = "opencode-openspec-task-tui"
@@ -33,6 +34,12 @@ var ExtraOptions = []ExtraOption{
 		Key:             openSpecOptionKey,
 		Label:           "OpenSpec",
 		Description:     "Instala o actualiza el CLI global de OpenSpec",
+		DefaultSelected: true,
+	},
+	{
+		Key:             tsgoOptionKey,
+		Label:           "tsgo",
+		Description:     "Instala o actualiza tsgo y lo configura como LSP de TypeScript",
 		DefaultSelected: true,
 	},
 	{

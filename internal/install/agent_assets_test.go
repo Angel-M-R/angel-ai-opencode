@@ -115,6 +115,124 @@ func TestAgentFrontmatterRemainsStructurallySafe(t *testing.T) {
 	}
 }
 
+func TestOpenSpecPlannerRequiresEvidenceCompleteResults(t *testing.T) {
+	planner := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "openspec-planner.md")), " "))
+	for _, required := range []string{
+		"audit the complete tool transcript",
+		"files touched",
+		"every command executed in exact order",
+		"failed command and exit code",
+		"diagnosed cause",
+		"bounded correction",
+		"equivalent-or-broader",
+		"evidence that the successful validation covers",
+		"same worker in the same bounded invocation",
+		"final relevant validation state",
+		"evidence gap",
+		"do not report `done` or recommend implementation",
+	} {
+		if !strings.Contains(planner, required) {
+			t.Errorf("planner result contract is missing %q", required)
+		}
+	}
+	if strings.Contains(planner, "return a compact result: status (done|blocked|partial)") {
+		t.Error("planner still has the incomplete compact-only result contract")
+	}
+}
+
+func TestOrchestratorGatesImplementationOnPlannerEvidence(t *testing.T) {
+	orchestrator := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " "))
+	for _, required := range []string{
+		"### Planner result gate",
+		"the planner owns the detailed evidence report; the orchestrator owns the gate",
+		"artifacts exist is not sufficient",
+		"clean under the shared corrected-failure result fields",
+		"treat the result as an evidence gap",
+		"never dispatch an implementer from an incomplete planning report",
+	} {
+		if !strings.Contains(orchestrator, strings.ToLower(required)) {
+			t.Errorf("orchestrator planner gate is missing %q", required)
+		}
+	}
+}
+
+func TestOrchestratorRequiresPreBriefSolutionComparison(t *testing.T) {
+	orchestrator := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " "))
+	for _, required := range []string{
+		"### solution comparison gate",
+		"after the selected product/technical interview work",
+		"before the brief is complete",
+		"briefly inspect the relevant repository",
+		"compare 2-3 viable alternatives when that many exist",
+		"never invent alternatives",
+		"if only one option is viable",
+		"complexity",
+		"risk",
+		"guarantee",
+		"operational impact",
+		"reversibility",
+		"scope change",
+		"state one recommendation",
+		"explicit selection",
+		"separate solution-choice `question`",
+		"separate from the existing route-selection question",
+		"materially changes scope",
+		"before that choice",
+		"preserve the repository evidence, full matrix, recommendation",
+		"pass them verbatim in the brief to `openspec-planner`",
+	} {
+		if !strings.Contains(orchestrator, required) {
+			t.Errorf("orchestrator solution-comparison gate is missing %q", required)
+		}
+	}
+	if strings.Contains(orchestrator, "/grill-me") {
+		t.Error("orchestrator introduced the out-of-scope /grill-me path")
+	}
+
+	gate := strings.Index(orchestrator, "### solution comparison gate")
+	brief := strings.Index(orchestrator, "the interview ends with a completed brief")
+	route := strings.Index(orchestrator, "## execution route selection")
+	if gate < 0 || brief < 0 || route < 0 || !(brief < gate && gate < route) {
+		t.Fatalf("solution-comparison gate ordering is invalid: brief=%d gate=%d route=%d", brief, gate, route)
+	}
+}
+
+func TestOrchestratorSupportsManualReviewWithSharedReviewerSelection(t *testing.T) {
+	orchestrator := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " "))
+	for _, required := range []string{
+		"manual review request",
+		"explicit user request to review the current state",
+		"planned tasks remain pending",
+		"before `openspec-verifier`",
+		"same one multi-select `question`",
+		"security risk",
+		"simplicity",
+		"correctness",
+		"none",
+		"mutually exclusive",
+		"no reviewer option is preselected",
+		"do not infer the reviewer selection",
+		"reviewed, not verified",
+		"must not mark or unmark openspec tasks",
+		"satisfy the verifier gate",
+		"archive a change",
+		"do not trigger verification or archive automatically",
+	} {
+		if !strings.Contains(orchestrator, required) {
+			t.Errorf("orchestrator manual-review contract is missing %q", required)
+		}
+	}
+
+	manual := strings.Index(orchestrator, "### manual review request")
+	automatic := strings.Index(orchestrator, "### automatic review gate")
+	if manual < 0 || automatic < 0 || manual >= automatic {
+		t.Fatalf("manual review entry point must precede the automatic gate: manual=%d automatic=%d", manual, automatic)
+	}
+	if !strings.Contains(orchestrator[automatic:], "once `openspec-verifier` reports the change verified") {
+		t.Error("automatic OpenSpec review gate no longer remains verifier-gated")
+	}
+}
+
 // Vendored OpenSpec skills remain complete and pinned to their generated
 // version.
 func TestVendoredOpenSpecAgentAssetsRemainPreserved(t *testing.T) {

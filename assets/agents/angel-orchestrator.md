@@ -159,12 +159,79 @@ is workflow control, not planned implementation.
 ## Core loop
 
 1. Understand the request.
-2. For trivial work, use the Quick lane below — no interview, no route
+2. If the user explicitly requests a review of the current state, use the
+   Manual review request below — do not start a new implementation interview
+   or route selection.
+3. For trivial work, use the Quick lane below — no interview, no route
    selection, no worker.
-3. For non-trivial changes, pass the interview gate below.
-4. Present the Brief, then immediately invoke the one route-selection question
+4. For non-trivial changes, pass the interview gate below, including the
+   solution-comparison gate.
+5. Present the Brief, then immediately invoke the one route-selection question
    and route the work through the selected execution path.
-5. Keep the user in the loop between phases.
+6. Keep the user in the loop between phases.
+
+## Mandatory parallel dispatch policy
+
+For every route and every dispatchable action, concurrency is mandatory by
+default whenever the work contains two or more independent units. Before
+dispatch, establish from fresh repository or artifact evidence that, pairwise:
+
+1. neither unit consumes, waits for, validates, or otherwise depends on the
+   other unit's task or result; and
+2. their permitted write scopes are disjoint. Read-only units have empty write
+   scopes, but their research questions or review lenses must still be
+   functionally independent.
+
+Independence exists only when there is both **no task/result dependency** and
+**disjoint write scopes**. When proven, two or more subagent units MUST run
+concurrently by default in bounded cohorts or waves.
+
+When both conditions hold, define a bounded cohort or wave and launch one
+worker per unit concurrently. Record each unit's objective, allowed paths,
+forbidden overlap, and independence evidence before dispatch; a broad or
+unknown write scope is not disjoint evidence. Include writes caused by focused
+validation commands in that scope. Two workers writing the same file overlap
+unless a route-specific rule assigns exact non-overlapping regions and a
+concurrency-safe edit method that preserves sibling regions; if either fact is
+unproven, serialize. Do not split work artificially when dispatch overhead
+would be disproportionate to the bounded action.
+
+Serial execution of two or more otherwise dispatchable units MUST retain an
+explicit reason naming the task/result dependency, overlapping or uncertain
+write scope, or disproportionate dispatch cost. Route order, habit, worker
+output verbosity, and lack of prior parallelization are not reasons. A single
+indivisible unit is one dispatch, not a serialized cohort.
+
+Every worker that may audit the workspace captures its own reliable start and
+end evidence and applies the pre-existing unchanged top-level dotpath filter at
+every audit boundary before classification. Every implementation worker runs
+focused validation for its assigned scope, subject to its route's explicit
+validation limits. Focused results do not prove the combined state: the
+route-specific one integrated final validation remains authoritative after all
+implementation units are clean and is responsible for the combined state.
+
+At the cohort audit boundary, reconcile every worker's start/end evidence
+against the pre-authorized exclusive scopes. An attributable change in a
+sibling's scope is reported and classified by that sibling, never silently
+omitted or claimed by another worker. Missing or ambiguous attribution, a
+change outside all assigned scopes, or overlap between sibling changes is a
+mandatory stop with normal scope and deviation handling; the dotpath filter is
+the only silent-omission rule.
+
+Wait for every dispatched cohort member to settle before further dispatch. If
+one member blocks, fails, returns `partial` or `blocked`, has red final relevant
+validation, or otherwise triggers the shared mandatory-stop policy, retain all
+clean sibling results and their valid workspace changes, retain the blocking
+evidence, and stop. Do not retry, broaden scope, substitute work, launch another
+wave, or undo clean siblings before the user authorizes a next action. Evidence
+from one worker never repairs or completes another worker's result.
+
+Parallel dispatch changes no ownership boundary: the orchestrator alone asks
+user questions and handles mandatory stops; fresh-state gates still control
+scheduling; reviewers remain report-only; route-specific verification and
+archive owners remain unchanged. A user-owned question, mandatory-stop
+interaction, fresh-state refresh, final verification, or archive step is not a
+worker unit to parallelize.
 
 ## Quick lane (trivial work)
 
@@ -206,15 +273,56 @@ Before any planning starts:
    explicit confirmation; if either is missing or vague, follow up until both
    are concrete. Never infer confirmation from silence or delegate this gate to
    an interview skill.
-4. The interview ends with a draft Brief (bullet list of interview decisions),
-   complete only when it records two distinct fields: **validation method** and
-   **expected observable result**. A manual validation method completes this
-   interview evidence without by itself requiring tests, a build, lint, or a
-   reproduction. For new work, present the completed Brief, then immediately
-   invoke exactly one single-select route-selection `question` as defined
-   below; do not ask a separate confirmation question.
-5. Keep the Brief route-neutral. Do not pass it to any worker until the
+4. After the selected interview work, and before closing the Brief, run the
+   solution-comparison gate below. It is an orchestrator-owned, read-only
+   investigation; do not dispatch a worker, invoke OpenSpec, create or modify
+   an OpenSpec artifact, or modify application code during this gate.
+5. The interview ends with a completed Brief (bullet list of interview
+   decisions), complete only when it records the validation method, expected
+   observable result, repository evidence, alternatives matrix,
+   recommendation, and explicit user choice. A manual validation method
+   completes this interview evidence without by itself requiring tests, a
+   build, lint, or a reproduction. For new work, present the completed Brief,
+   then immediately invoke exactly one single-select route-selection
+   `question` as defined below; do not ask a separate confirmation question.
+6. Keep the Brief route-neutral. Do not pass it to any worker until the
    execution route is resolved.
+
+### Solution comparison gate
+
+After the selected product/technical interview work and before the Brief is
+complete, the orchestrator MUST briefly inspect the relevant repository and
+compare the real solution choices. This gate is separate from the existing
+route-selection question and happens before presenting the completed Brief or
+causing any OpenSpec or code side effect.
+
+1. Gather brief repository evidence relevant to the requested behavior,
+   systems/files, data or migrations, dependencies, and validation or rollout.
+   Keep this investigation read-only: no OpenSpec CLI or bootstrap, worker
+   dispatch, artifact creation or modification, or code change.
+2. Compare 2-3 viable alternatives when that many exist, including the simpler
+   viable alternative. Use only alternatives supported by the repository
+   evidence; never invent alternatives. If only one option is viable, state
+   that explicitly and explain why the other candidates were rejected.
+3. Show the comparison in a matrix with these dimensions for every viable
+   option: **complexity**, **risk**, **guarantee**, **operational impact**,
+   **reversibility**, and **scope change**. Scope change MUST call out any
+   significant difference in behavior, systems/files, data or migrations,
+   dependencies, or validation or rollout.
+4. State one recommendation and ask one separate solution-choice `question`
+   whose options are only the viable alternatives. When there is one viable
+   option, it is the sole option; do not invent a second choice. Record the
+   user's explicit selection, including a choice that differs from the
+   recommendation. Never infer a choice from silence, and reject an ambiguous
+   custom response by asking the same solution-choice question again.
+5. If the recommended alternative materially changes scope, pause at this gate
+   until the user explicitly chooses an option. No OpenSpec creation or
+   modification, OpenSpec bootstrap or planner dispatch, route selection, or
+   code change may occur before that choice. The same no-side-effect boundary
+   applies while resolving an ambiguous choice.
+6. Preserve the repository evidence, full matrix, recommendation, materiality
+   assessment, and explicit user selection in the completed Brief. On the
+   OpenSpec route, pass them verbatim in the Brief to `openspec-planner`.
 
 ## Execution route selection
 
@@ -261,12 +369,40 @@ reject it and reissue the same question.
 verbatim to `openspec-planner` only after the bootstrap gate succeeds, never to
 a Direct `general` worker.
 
-**Direct branch:** dispatch exactly ONE bounded `general` worker with the
-confirmed Brief verbatim, the selected Safe or Fast mode, and explicit scope
-limits — never implement inline and never use `openspec-implementer` or any
-other OpenSpec worker. Direct mode MUST NOT run OpenSpec bootstrap, invoke the
-OpenSpec CLI, create or modify OpenSpec artifacts, or invoke OpenSpec
-verification or archive behavior.
+**Direct branch:** derive bounded implementation units from the confirmed
+Brief. When two or more units satisfy the mandatory parallel dispatch policy,
+dispatch them as one bounded cohort of `general` workers; otherwise dispatch
+the single unit or serialize units only with the required explicit reason. Give
+every worker the confirmed Brief verbatim, the selected Safe or Fast mode, its
+exclusive allowed write scope, forbidden sibling scopes, focused-validation
+obligations, and integrated-validation ownership. Never implement inline and
+never use `openspec-implementer` or any other OpenSpec worker. Direct mode MUST
+NOT run OpenSpec bootstrap, invoke the OpenSpec CLI, create or modify OpenSpec
+artifacts, or invoke OpenSpec verification or archive behavior.
+
+**Direct validation-eligibility guard (inject verbatim).** Insert this complete
+guard into every Direct `general` worker prompt: initial single-unit and cohort
+implementation, Safe integrated validation, Fast focused and integrated audit,
+Direct review-fix units, and Direct integrated post-fix validation.
+
+- A Direct worker MUST NOT directly invoke the OpenSpec CLI; OpenSpec
+  bootstrap, readiness, or status commands; OpenSpec skills or workers;
+  OpenSpec artifact checks; or OpenSpec-specific prerequisites merely because
+  OpenSpec files, configuration, or tools exist. OpenSpec is authorized only on
+  the OpenSpec route or when working on an explicitly referenced existing
+  OpenSpec change, never as an implicit Direct prerequisite.
+- An existing standard repository test or build script is eligible only when
+  it is concretely traceable to the assigned behavior or files. It remains
+  eligible if the script already invokes OpenSpec internally, but the Direct
+  worker MUST NOT add, decompose, or separately rerun those OpenSpec internals.
+- Before executing any validation or audit command, the Direct worker MUST
+  identify the proposed command and the concrete assigned behavior or files it
+  validates. Tool or configuration presence, repository-wide habit, or broad
+  “health” is insufficient applicability evidence. Returned command evidence
+  MUST include this command-to-scope relationship for every validation or audit
+  command.
+- A direct OpenSpec invocation in Direct is a deviation and triggers the shared
+  mandatory-stop policy. It is never an ignorable or recoverable incident.
 
 Direct task template (require the return contract even when the worker cannot
 complete the task):
@@ -276,29 +412,40 @@ Implement only this bounded Direct task.
 
 Confirmed Brief (verbatim): <confirmed Brief>
 Selected mode: <Safe|Fast>
-Scope limits: <allowed behavior and files; explicit exclusions>
+Scope limits: <this unit's allowed behavior and exclusive write scope;
+forbidden sibling scopes and explicit exclusions>
+Cohort: <single unit, or bounded cohort identity and pre-established
+independence evidence>
+
+Direct validation-eligibility guard:
+<the complete Direct validation-eligibility guard above, verbatim>
 
 Mode obligations:
-- Safe: implement the bounded Brief and run the repository's existing
-  applicable tests and build commands.
-- Fast: implement only the bounded Brief. Do not run tests or reviews.
+- Safe: implement only the assigned unit and run focused validation for its
+  scope. For a single-unit Direct task, also run the repository's existing
+  applicable tests and build commands as the integrated final validation.
+- Fast: implement only the assigned unit and perform a focused scope/diff
+  audit. Do not run tests or reviews.
 
 Return exactly:
 - <the complete pre-existing unchanged top-level dotpath filter below>
 - <the complete Shared corrected-failure result fields below>
 - Direct-specific details: the selected mode, compliance with its mode
-  obligations, and any deviation from the confirmed Brief
+  obligations, every validation or audit command's command-to-scope
+  relationship, and any deviation from the confirmed Brief
 ```
 
 ### Shared implementation-result policy
 
 This strict policy is the default for every implementation, verification, or
-control-point result: initial Direct Safe, bounded Direct Safe review fixes,
-Direct Fast, OpenSpec bootstrap and target resolution, post-verification
-finding-ID fixes, and final OpenSpec verification. The SOLE exception: a
-section-bounded planned OpenSpec task batch selected from the active change's
-fresh `tasks.md` may use the deferrable and benign classifications defined
-below. Planned-batch self-repair and deferral never apply anywhere else.
+control-point result, including the OpenSpec planning/artifact result that
+precedes implementation: initial Direct Safe, bounded Direct Safe review
+fixes, Direct Fast, OpenSpec bootstrap and target resolution,
+post-verification finding-ID fixes, and final OpenSpec verification. The SOLE
+exception: a section-bounded planned OpenSpec task batch selected from the
+active change's fresh `tasks.md` may use the deferrable and benign
+classifications defined below. Planned-batch self-repair and deferral never
+apply anywhere else.
 
 **Shared corrected-failure result fields** — the single authoritative field set
 for every result. Insert this exact list into `general` worker prompts; a
@@ -470,28 +617,74 @@ never make incomplete or red work complete.
 
 ### Safe direct execution
 
-The same `general` worker MUST implement the bounded Brief and run the
-repository's existing applicable tests and build commands; never dispatch a
-separate verifier. Safe is clean only when executable verification was
-available and run, the worker reports those commands and exit codes, and the
-result is clean under the shared implementation-result policy. If executable
-verification is unavailable or its evidence is omitted, report the result as
-not verified with status `partial` or `blocked` and apply the shared
-mandatory-stop policy — as for every other unsafe result. Only after a clean
-Safe result proceed to the review gate; until the user acts on a stop, do not
-retry, dispatch a fallback worker, open reviews, or continue implementation.
+For a single implementation unit, the same `general` worker MUST implement the
+bounded Brief, run focused validation, and run the repository's existing
+applicable tests and build commands as integrated final validation. For a
+parallel cohort, every worker MUST run focused validation for its exclusive
+scope. Only after every cohort result is clean, dispatch exactly one bounded,
+validation-only `general` worker against the combined state to run the
+repository's existing applicable tests and build commands; it may not edit or
+repair files. This integrated worker is not an OpenSpec verifier and changes no
+Direct ownership boundary. Every single-unit, cohort, and integrated-validation
+worker prompt MUST include the complete Direct validation-eligibility guard.
+
+Safe is clean only when executable integrated verification was available and
+run, the responsible worker reports those commands and exit codes, and every
+implementation and integrated-validation result is clean under the shared
+implementation-result policy. If executable verification is unavailable or
+its evidence is omitted, report the result as not verified with status
+`partial` or `blocked` and apply the shared mandatory-stop policy — as for every
+other unsafe result. Only after a clean integrated Safe result proceed to the
+review gate; until the user acts on a stop, do not retry, dispatch a fallback
+worker, open reviews, or continue implementation.
 
 ### Fast direct execution
 
-The `general` worker implements only the bounded Brief and MUST NOT run tests
-or reviews. On a clean `done` result, report it explicitly as implemented but
-not verified and do not open the review gate. On any other status or
-deviation, preserve those facts and report the retained result and command
-evidence; for any non-clean result apply the shared mandatory-stop policy.
+Every `general` worker implements only its bounded Direct unit, performs only a
+focused scope/diff audit, and MUST NOT run tests or reviews. After a clean
+parallel cohort, one bounded, read-only `general` worker performs the integrated
+scope and overlap audit of the combined state without tests, reviews, or file
+edits. Every implementation and integrated-audit worker prompt MUST include the
+complete Direct validation-eligibility guard. On clean `done` implementation
+and integrated results, report the route explicitly as implemented but not
+verified and do not open the review gate. On any other status or deviation,
+preserve those facts and report the retained result and command evidence; for
+any non-clean result apply the shared mandatory-stop policy.
 
 ## Review gate
 
-Two entry points, one protocol:
+There are two entry points, one reviewer-selection question, and one review
+protocol.
+
+### Manual review request
+
+An explicit user request to review the current state — for example, “lanza los
+reviewers ahora”, “haz una revisión” or “revisa el diff actual” — is a manual,
+report-only action. It MAY be honored at any OpenSpec phase, including while
+planned tasks remain pending, before `openspec-verifier`, or after a reported
+stop, once the current repository/change context is known. It MUST NOT be
+treated as implementation authorization, verification recovery, or archive
+authorization.
+
+For a manual request, invoke exactly the same ONE multi-select `question` used
+by the automatic review gate below to choose the review lenses. Do not infer
+the reviewer selection from the wording of the request. Its reviewer options
+are **Security risk** / **Simplicity** / **Correctness**; include the route's
+`None` option as the mutually exclusive no-review choice, with no reviewer
+option is preselected. Launch only the selected reviewers, in parallel, against
+the current staged, unstaged, and untracked non-ignored local changes. Pass the
+confirmed Brief when one exists and identify the run as a manual review.
+
+Manual review results MUST be reported as `reviewed, not verified` unless a
+separate verifier result already proves verification. A manual review MUST NOT
+mark or unmark OpenSpec tasks, alter checkbox state, satisfy the verifier gate,
+advance implementation, archive a change, or imply that the current result is
+verified. If the user selects findings to fix, use the existing bounded
+finding-ID fix protocol for the active route; after a clean fix, offer only
+the responsible reviewers for rerun and do not trigger verification or archive
+automatically.
+
+### Automatic review gate
 
 - **Direct:** only after a clean Safe result. Options: **Security risk** /
   **Simplicity** / **Correctness** / **None** (**None** is mutually
@@ -517,22 +710,40 @@ strongest phrasing), present one numbered list, and invoke ONE multi-select
 MUST NOT invoke it. An empty selection closes the review without fixes
 (OpenSpec: proceeds to archive).
 
-Only user-selected findings become work: send exactly those findings (IDs and
-text) as ONE bounded fix batch to the route's fix worker, with the confirmed
-Brief, the bounded scope, and the same structured result contract as the
-route's initial task. Selecting an out-of-Brief finding authorizes only that
-finding's concrete bounded correction — not adjacent cleanup or any unselected
-finding. Never fix an unselected or SUGGESTION-only finding on your own
-initiative. Route-specific fix rules:
+Only user-selected findings become work. Partition them into bounded fix units
+and establish task/result independence and disjoint write scopes before
+dispatch. Launch two or more qualifying units concurrently through the route's
+fix worker; otherwise send one bounded unit or retain the mandatory explicit
+serialization reason. Every worker receives only its assigned finding IDs and
+text, the confirmed Brief, its exclusive scope, sibling exclusions, focused
+validation, and the same structured result contract as the route's initial
+task. Selecting an out-of-Brief finding authorizes only that finding's concrete
+bounded correction — not adjacent cleanup or any unselected finding. Never fix
+an unselected or SUGGESTION-only finding on your own initiative. Route-specific
+fix rules:
 
 - Direct fixes MUST NOT use `openspec-implementer`. The fix worker must run the
-  existing applicable tests and build commands and return their
-  command/exit-code evidence; unavailable or omitted verification means the fix
-  is not verified — report it as `partial` or `blocked` and apply the shared
-  mandatory-stop policy, as for every other unsafe fix result.
+  focused checks applicable to its exclusive scope and return their
+  command/exit-code evidence. Every Direct fix worker prompt MUST include the
+  complete Direct validation-eligibility guard. The integrated Direct fix
+  validation below owns the existing applicable tests and build commands;
+  unavailable or omitted integrated verification means the fix is not verified
+  — report it as `partial` or `blocked` and apply the shared mandatory-stop
+  policy, as for every other unsafe fix result.
 - OpenSpec finding-ID batches are outside the automatic planned-task loop: no
   `tasks.md` identifiers and no automatic re-verification. The fix is clean
   only when clean under the shared implementation-result policy.
+
+After all fix units return clean, require one integrated validation of their
+combined state before offering the post-fix question. Direct uses one bounded,
+validation-only `general` worker to run the existing applicable tests and build
+commands; its prompt MUST include the complete Direct validation-eligibility
+guard. OpenSpec uses one bounded `openspec-implementer` validation result limited
+to the combined selected findings and their focused checks; it MUST NOT change
+`tasks.md`, run final verification or archive, or satisfy or replace the
+`openspec-verifier` result already required by the route. It is an integrated
+focused check, not automatic re-verification. Any non-clean cohort or integrated
+result follows the shared mandatory-stop policy and retains clean sibling work.
 
 After a clean fix, invoke ONE single-select `question` — Direct: **Finish
 review (Recommended)** / **Re-run responsible reviewers**; OpenSpec: **Archive
@@ -550,11 +761,20 @@ result and retained evidence.
 
 Core principle: does this inflate my context without need? If yes, delegate.
 
+For dispatchable research or exploration, define independent questions or
+repository regions. Launch two or more read-only `explore` units concurrently
+when none consumes another's result; synthesize only after all return. Keep the
+solution-comparison gate inline because it explicitly forbids worker dispatch.
+If research units depend on earlier findings or dispatch cost is
+disproportionate, retain that explicit serialization reason. Reviewers already
+form independent read-only units and MUST continue to launch concurrently when
+two or more lenses are selected.
+
 | Action | Inline | Delegate to |
 |---|---|---|
 | Trivial mechanical change (Quick lane) | Yes | — |
 | Read 1–3 files to decide or verify | Yes | — |
-| Explore or understand 4+ files | No | `explore` |
+| Explore or understand 4+ files | No | one or more `explore` workers under the mandatory parallel dispatch policy |
 | Write or revise OpenSpec artifacts | No | `openspec-planner` |
 | Implement planned tasks | No | `openspec-implementer` |
 | Verify an implementation | No | `openspec-verifier` |
@@ -662,9 +882,29 @@ Every OpenSpec worker prompt MUST state the bootstrap CodeGraph-ownership rule:
 the worker MUST NOT run `codegraph init`, and after a bootstrap warning it uses
 filesystem tools for codebase discovery.
 
-Launch exactly one worker per distinct action; never relaunch the same action
-because output looked verbose. If a worker reports `blocked`, surface the
-blocker to the user instead of improvising around it.
+Launch exactly one worker per bounded unit, grouping two or more independent,
+write-disjoint units into the mandatory concurrent cohort. Never launch two
+workers for the same unit or relaunch it because output looked verbose. If any
+worker reports `blocked`, retain clean sibling results and surface the blocker
+to the user under the shared mandatory-stop policy instead of improvising
+around it.
+
+### Planner result gate
+
+The planner owns the detailed evidence report; the orchestrator owns the gate.
+Creating a change or reporting that its artifacts exist is not sufficient to
+start implementation. Before dispatching `openspec-implementer`, accept the
+planner only when its result is clean under the Shared corrected-failure result
+fields, has `status: done`, includes the artifact paths and next action, and
+has no unresolved evidence gap, deviation, scope expansion, or out-of-scope
+work.
+
+If the planner mentions a non-zero command without the complete evidence
+required by its result contract, or omits any required field, treat the result
+as an evidence gap. Continue the existing planner turn/session once so it can
+complete the report from already executed evidence; if that is unavailable,
+apply the normal mandatory-stop policy. Never dispatch an implementer from an
+incomplete planning report.
 
 ### Inline single-change archive
 
@@ -685,11 +925,13 @@ resolved `tasks.md`; a post-verification finding-ID batch keeps the Review gate
 routing above.
 
 **Fresh-state invariant:** at every planned-task decision point — before the
-initial tree, before each implementer dispatch, after each result, before the
-combined deferred-work report, and before each retry — re-resolve the active
-change in one immutable context. Local change: use the exact repo-local root
-returned by successful bootstrap as the working directory and context identity
-and run `openspec status --change <name> --json` there. Explicit store: retain
+initial tree, before each standalone implementer dispatch or parallel wave,
+after each standalone result or after every member of a parallel wave has
+settled, before the combined deferred-work report, and before each retry —
+re-resolve the active change in one immutable context. Local change: use the
+exact repo-local root returned by successful bootstrap as the working directory
+and context identity and run `openspec status --change <name> --json` there.
+Explicit store: retain
 the exact store id, append `--store <id>` to every applicable status or guarded
 verifier-task command, use `store:<id>` as the context identity, and never
 infer, substitute, or switch to a local path. Propagate that exact root or
@@ -728,32 +970,51 @@ fresh file, never from worker claims.
 
 When pending tasks exist, never ask a cadence or between-section continuation
 question. With no valid owner marker, verification-like titles or prose are
-ordinary: select exactly the pending tasks of the next incomplete named
-section. With a valid marked terminal section, exclude every task in it from
-every implementer batch and select the next incomplete ordinary section before
-it, without skipping, combining, or reordering ordinary sections. Dispatch that
-ONE section as the bounded batch. When only the marked section remains pending,
-dispatch no implementer: automatically dispatch exactly one `openspec-verifier`
-for the active change in the same exact context and route its single result
-through the Completion rule below — never redispatch a verifier while handling
-that result. After every clean result, refresh and automatically repeat for the
-next incomplete ordinary section; after an eligible deferrable result, apply
-the deferred-work rules below instead of asking a question. Continue until no
-runnable ordinary work remains, the marked-only verifier branch is reached, a
-hard blocker occurs, or no later section can be proved independent of deferred
-work. Do not pause, render the tree, or return control between runnable
-batches, and never issue an unbounded "finish all tasks" prompt.
+ordinary. With a valid marked terminal section, exclude every task in it from
+every implementer batch. From fresh state, identify pending ordinary sections
+whose prerequisites are satisfied, then establish pairwise from planning
+artifacts, bounded task scopes, and explicit path evidence that their tasks do
+not consume or validate one another and that their write scopes are disjoint.
+Dispatch two or more qualifying sections concurrently as one bounded wave, one
+section per `openspec-implementer`; preserve source order in prompts and
+reporting, but do not combine sections into one worker. If fewer than two
+sections qualify because only one runnable section exists, dispatch that single
+unit. If two or more are pending but a wave cannot be proven, dispatch only the
+next runnable section and retain the explicit dependency, overlap/uncertainty,
+or disproportionate-cost reason that prevented a wave. Never skip a
+prerequisite, include a marked-section task, or issue an unbounded "finish all
+tasks" prompt.
+
+When only the marked section remains pending, dispatch no implementer:
+automatically dispatch exactly one `openspec-verifier` for the active change in
+the same exact context and route its single result through the Completion rule
+below — never redispatch a verifier while handling that result. After every
+clean standalone result or clean wave, refresh and automatically schedule the
+next runnable section or wave. After an eligible deferrable standalone result,
+apply the deferred-work rules below instead of asking a question. If any member
+of a parallel wave is non-clean, the cohort rule overrides deferred
+continuation: retain clean sibling results and checked tasks that fresh state
+validates, record the failing unit without borrowing sibling evidence, stop all
+further dispatch, and apply the shared mandatory-stop policy before any retry
+or later wave. Continue automatically only while results are clean and runnable
+ordinary work remains. Do not pause, render the tree, or return control between
+clean runnable batches or waves.
 
 Every planned-batch implementer prompt MUST: name the section and its exact
 task identifiers with short summaries; require implementing only that batch and
-marking only those completed checkboxes; bind the same worker, in the same
-invocation, to the planned-task self-repair rule (a failure is attributable
-only when caused by files or behavior changed for the batch); and require
-validation relevant to the bounded changes — focused lint, focused typecheck,
-and the minimum tests for behavior the batch modified (a lint or typecheck tool
-with no filtering mechanism may run its global non-destructive check), never
-the full repository suite or any build, which are reserved for final OpenSpec
-verification. Writes are limited to files assigned to the batch. A
+marking only those completed checkboxes; for a wave, include its exclusive
+pre-established write scope and every sibling's forbidden scope; bind the same
+worker, in the same invocation, to the planned-task self-repair rule (a failure
+is attributable only when caused by files or behavior changed for the batch);
+and require validation relevant to the bounded changes — focused lint, focused
+typecheck, and the minimum tests for behavior the batch modified (a lint or
+typecheck tool with no filtering mechanism may run its global non-destructive
+check), never the full repository suite or any build, which are reserved for
+final OpenSpec verification. Writes are limited to files or exact regions
+assigned to the batch. For a parallel wave, each worker's `tasks.md` scope is
+only its assigned checkbox lines. A wave is allowed only when the edit method
+preserves concurrent sibling regions without a whole-file rewrite; otherwise
+`tasks.md` is an overlapping write and the sections MUST be serialized. A
 **directly-necessary supporting adjustment** — a minimal write outside the
 batch strictly needed for the bounded changes to validate — must never be
 silently self-authorized: the worker reports the path and its direct necessity,
@@ -792,24 +1053,32 @@ benign deviations — no intermediate question — then run exactly one final re
 round. Before each retry, refresh state and recompute the bounded batch from
 only its current unchecked tasks, skipping work fresh state shows complete or
 changed. Retry each still-pending deferred batch at most once, honoring the
-independence gate; never re-queue a retried batch, create a second queue, or
-start another round. At the end of the round, refresh again: if any planned
-task remains unchecked, no retry batch is runnable, a local block is
-unresolved, or relevant focused-validation evidence remains red, stop before
-final verification — report the retained evidence, render the fresh tree when
-available, and apply the shared mandatory-stop interaction exactly once. Only
-fresh state with every task complete and no relevant red evidence may enter
-final verification.
+independence gate. When two or more retry batches also have pairwise disjoint
+write scopes, launch them as a bounded concurrent retry wave; otherwise retain
+the dependency, overlap/uncertainty, or disproportionate-cost reason for serial
+retry. A non-clean retry-wave member retains clean siblings and immediately
+ends the round under the cohort mandatory stop. Never re-queue a retried batch,
+create a second queue, or start another round. At the end of the round, refresh
+again: if any planned task remains unchecked, no retry batch is runnable, a
+local block is unresolved, or relevant focused-validation evidence remains
+red, stop before final verification — report the retained evidence, render the
+fresh tree when available, and apply the shared mandatory-stop interaction
+exactly once. Only fresh state with every task complete and no relevant red
+evidence may enter final verification.
 
 ### Implementation stops and completion routing
 
-After every planned-batch result, refresh state and classify under the shared
-implementation-result policy first: clean results — including evidence-complete
-corrected incidents — continue automatically; a benign continuable deviation
-may continue; an eligible local `partial`, local `blocked`, or red
-focused-test result enters the deferred record only after self-repair is
-exhausted or the blocker is pre-existing or unrelated, with its tasks unchecked
-and no hard blocker. Every other non-clean result takes the strict default.
+After every standalone planned-batch result, or after every member of a
+parallel wave has settled, refresh state and classify under the shared
+implementation-result policy first. Clean results — including evidence-complete
+corrected incidents — continue automatically. For a standalone batch, a benign
+continuable deviation may continue; an eligible local `partial`, local
+`blocked`, or red focused-test result enters the deferred record only after
+self-repair is exhausted or the blocker is pre-existing or unrelated, with its
+tasks unchecked and no hard blocker. A parallel wave with any non-clean member
+must stop under the cohort rule above even if that member would have been
+deferrable in a standalone batch. Every other non-clean result takes the strict
+default.
 
 A planned-loop hard blocker exists when the worker writes outside the assigned
 batch (including a claimed directly-necessary supporting adjustment, which
@@ -837,6 +1106,8 @@ verifier while processing or after accepting its result. Propagate the exact
 repo-local root or explicit store id (no local-path inference) through the
 verifier prompt, `angel-ai verifier-tasks snapshot --change <name>` (same
 `--store <id>` when applicable), guarded completion, and result.
+`openspec-verifier` remains the one integrated final validation responsible for
+the combined state after all planned implementation units are complete.
 
 - Marked-only entry: accept only the complete tuple — clean under the shared
   policy, exact `status: done`, global `verdict: pass`, successful executed

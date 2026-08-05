@@ -159,6 +159,7 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 	}
 
 	codegraphSelected, codegraphSpecified := request.Extras[codegraphOptionKey]
+	tsgoSelected, tsgoSpecified := request.Extras[tsgoOptionKey]
 	var codegraphObject map[string]any
 	if codegraphSpecified && codegraphSelected {
 		patch, err := readAssetJSONObject(request.Assets, "integrations/codegraph/mcp.json")
@@ -182,6 +183,8 @@ func prepareInstallation(request InstallationRequest) (preparedInstallation, err
 		codegraphSpecified,
 		codegraphSelected,
 		codegraphObject,
+		tsgoSpecified,
+		tsgoSelected,
 	)
 	if err != nil {
 		return preparedInstallation{}, err
@@ -322,10 +325,11 @@ func prepareOpenCodeJSONObject(
 	patches []map[string]any,
 	codegraphSpecified, codegraphSelected bool,
 	codegraphObject map[string]any,
+	tsgoSpecified, tsgoSelected bool,
 ) (preparedFile, bool, error) {
-	var mutate func(map[string]any) error
+	var mutations []func(map[string]any) error
 	if codegraphSpecified {
-		mutate = func(config map[string]any) error {
+		mutations = append(mutations, func(config map[string]any) error {
 			mcp, _ := config["mcp"].(map[string]any)
 			if codegraphSelected {
 				if mcp == nil {
@@ -344,11 +348,53 @@ func prepareOpenCodeJSONObject(
 				}
 			}
 			return nil
+		})
+	}
+	if tsgoSpecified && tsgoSelected {
+		mutations = append(mutations, configureTsgo)
+	}
+	var mutate func(map[string]any) error
+	if len(mutations) > 0 {
+		mutate = func(config map[string]any) error {
+			for _, mutation := range mutations {
+				if err := mutation(config); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 	}
 	return prepareJSONObjectCore(
-		path, defaultSchema, patches, pluginIdentity, mutate, codegraphSpecified && codegraphSelected,
+		path, defaultSchema, patches, pluginIdentity, mutate,
+		(codegraphSpecified && codegraphSelected) || (tsgoSpecified && tsgoSelected),
 	)
+}
+
+var tsgoLSPCommand = []any{"tsgo", "--lsp", "--stdio"}
+
+func configureTsgo(config map[string]any) error {
+	expected := map[string]any{"command": append([]any(nil), tsgoLSPCommand...)}
+
+	lsp, lspPresent := config["lsp"]
+	lspObject, lspOK := lsp.(map[string]any)
+	if lspPresent && !lspOK {
+		if _, isBoolean := lsp.(bool); !isBoolean {
+			return fmt.Errorf("tsgo configuration conflicts with manual lsp configuration")
+		}
+		lspObject = map[string]any{}
+		config["lsp"] = lspObject
+	}
+	if !lspPresent {
+		lspObject = map[string]any{}
+		config["lsp"] = lspObject
+	}
+	typescript, typescriptPresent := lspObject["typescript"]
+	if typescriptPresent && !reflect.DeepEqual(typescript, expected) {
+		return fmt.Errorf("tsgo configuration conflicts with manually modified lsp.typescript")
+	}
+
+	lspObject["typescript"] = expected
+	return nil
 }
 
 func prepareJSONObjectCore(

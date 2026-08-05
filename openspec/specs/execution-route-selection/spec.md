@@ -34,7 +34,7 @@ The orchestrator MUST continue work that targets an existing OpenSpec change thr
 - **THEN** the orchestrator resolves its current status and routes the next action through the existing OpenSpec workflow
 
 ### Requirement: OpenSpec selection preserves the complete workflow
-When OpenSpec is selected for new work, the orchestrator SHALL preserve the existing bootstrap gate, official planning-worker routing, artifact lifecycle, bounded implementation cadence, verification policy, review gate, review-fix routing, and archive path. Only section-bounded planned-task implementation MAY use the evidence-gated deferral and single-retry policy defined by `implementation-cadence-selector`; Direct execution and every OpenSpec action outside that loop MUST retain strict result handling.
+When OpenSpec is selected for new work, the orchestrator SHALL preserve the existing bootstrap gate, official planning-worker routing, artifact lifecycle, bounded implementation cadence, verification policy, automatic review gate, review-fix routing, and archive path. Only section-bounded planned-task implementation MAY use the evidence-gated deferral and single-retry policy defined by `implementation-cadence-selector`; Direct execution and every OpenSpec action outside that loop MUST retain strict result handling.
 
 #### Scenario: User chooses OpenSpec
 - **WHEN** the user selects OpenSpec at the execution-route gate
@@ -215,8 +215,25 @@ After a clean Safe result, the orchestrator SHALL offer Security risk, Simplicit
 - **WHEN** selected findings are fixed cleanly and the user wants confirmation
 - **THEN** the orchestrator reruns only the reviewers responsible for the addressed findings
 
+### Requirement: Explicit manual review uses the shared reviewer selection
+When the user explicitly requests a review of the current state, the orchestrator SHALL be permitted to run a manual, report-only review at any route phase after the current repository/change context is known, including while OpenSpec tasks remain pending or before `openspec-verifier`. It SHALL use the same multi-select reviewer question and reviewer options as the automatic review gate: Security risk, Simplicity, and Correctness, plus the route-specific mutually exclusive no-review option with no reviewer preselected. The orchestrator MUST NOT infer the selection from the wording of the request.
+
+The manual review SHALL inspect the current staged, unstaged, and untracked non-ignored changes and pass the confirmed Brief when one exists. Unless an independent verifier result already proves verification, it SHALL report `reviewed, not verified`. Manual review MUST NOT change OpenSpec task or checkbox state, satisfy the verifier gate, advance implementation, archive a change, or trigger verification or archive automatically. Any selected finding fix SHALL use the existing bounded finding-ID protocol for the active route.
+
+#### Scenario: User requests reviewers before OpenSpec completion
+- **WHEN** the user explicitly requests a review while one or more OpenSpec implementation tasks remain pending
+- **THEN** the orchestrator asks the shared multi-select reviewer question and launches only the selected reviewers against the current diff without dispatching the verifier
+
+#### Scenario: Manual review does not substitute for verification
+- **WHEN** a manual reviewer returns findings or no findings before final verification
+- **THEN** the orchestrator reports the result as reviewed but not verified, leaves task state unchanged, and keeps the automatic verifier and archive prerequisites intact
+
+#### Scenario: User selects no manual review
+- **WHEN** the user selects the mutually exclusive no-review option in the manual reviewer question
+- **THEN** the orchestrator closes the manual review request without launching a reviewer or changing route state
+
 ### Requirement: Fast mode is implemented but unverified
-In Fast mode, the `general` worker SHALL implement only the bounded Brief and MUST NOT run tests or reviews. The orchestrator SHALL explicitly report the result as implemented but not verified and MUST NOT open the review gate.
+In Fast mode, the `general` worker SHALL implement only the bounded Brief and MUST NOT run tests or reviews. The orchestrator SHALL explicitly report the result as implemented but not verified and MUST NOT open the automatic review gate; a later explicit manual review request remains governed by the manual-review requirement above.
 
 #### Scenario: Fast worker completes
 - **WHEN** the Fast worker completes the bounded implementation
@@ -238,23 +255,23 @@ The orchestrator SHALL treat a valid terminal section marked `<!-- owner: opensp
 - **THEN** the verifier dispatch and all applicable state checks retain that store id
 
 ### Requirement: One successful verification continues directly to review
-After the verifier returns a clean `status: done`, global `verdict: pass`, task-specific evidence for every marked task, and successful atomic completion, the orchestrator SHALL refresh the same active context and confirm that the tasks artifact is complete with no pending checkbox. It SHALL then reuse that verifier pass as final-verification evidence and proceed to the existing review gate without dispatching a second verification. Any non-pass, incomplete, conflicting, non-clean, or still-pending state MUST stop before review.
+After the verifier returns a clean `status: done`, global `verdict: pass`, task-specific evidence for every marked task, and successful atomic completion, the orchestrator SHALL refresh the same active context and confirm that the tasks artifact is complete with no pending checkbox. It SHALL then reuse that verifier pass as final-verification evidence and proceed to the automatic review gate without dispatching a second verification. Any non-pass, incomplete, conflicting, non-clean, or still-pending state MUST stop before the automatic review gate; this does not prohibit a later explicit manual review request under the manual-review requirement above.
 
 #### Scenario: Pass closes the marked section
 - **WHEN** guarded completion succeeds after a clean verifier pass and fresh follow-up state confirms all tasks complete
-- **THEN** the orchestrator enters the existing review gate using that pass without a second verifier dispatch
+- **THEN** the orchestrator enters the automatic review gate using that pass without a second verifier dispatch
 
 #### Scenario: Pass encounters a completion conflict
 - **WHEN** verification evidence passes but atomic completion reports stale or concurrent state
-- **THEN** the orchestrator retains the evidence, stops before review, and does not dispatch another worker automatically
+- **THEN** the orchestrator retains the evidence, stops before automatic review, and does not dispatch another worker automatically
 
 #### Scenario: Follow-up state remains incomplete
 - **WHEN** the verifier reports successful completion but fresh follow-up status or `tasks.md` still contains pending work
-- **THEN** the orchestrator treats the state as conflicting and stops before review without reusing the pass
+- **THEN** the orchestrator treats the state as conflicting and stops before automatic review without reusing the pass
 
 #### Scenario: Verification fails or is incomplete
 - **WHEN** the verifier returns `fail`, `not-verified`, non-clean status, failed task evidence, or incomplete task coverage
-- **THEN** the orchestrator changes no checkbox through fallback behavior and applies the existing mandatory-stop route before review
+- **THEN** the orchestrator changes no checkbox through fallback behavior and applies the existing mandatory-stop route before automatic review
 
 ### Requirement: Generated validation artifacts use causal classification
 Every Direct Safe result, section-bounded OpenSpec implementation result, bounded Direct or OpenSpec fix result, and final OpenSpec verification result SHALL classify a created or modified regenerable artifact as a generated validation artifact when an authorized validation command exits zero and command-specific evidence attributes the artifact diff to that command without intervening manual mutation or manual source-code edits. Eligibility SHALL NOT depend on whether Git ignores or tracks the artifact. The result MUST retain the artifact, list it in a separate generated-validation-artifacts category with the producing command, exit code, and causal-diff evidence, and MUST NOT report the eligible artifact as a deviation, scope expansion, or out-of-scope work or request authorization solely because it exists. This classification MUST NOT expand the functional scope of the assigned Brief, change, task, or fix batch and MUST NOT alter corrected-failure, recovered-probe, final-validation, destructive-action, or mandatory-stop rules.

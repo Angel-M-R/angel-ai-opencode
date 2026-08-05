@@ -213,7 +213,7 @@ Strict report-first mandatory stops SHALL remain unchanged for OpenSpec target r
 - **WHEN** the mandatory-stop question is unanswered
 - **THEN** the orchestrator performs no retry, continuation, scope expansion, substitute selection, phase advance, or worker dispatch
 
-### Requirement: Automatic verification and retained review gate
+### Requirement: Automatic verification and retained automatic review gate
 After a fresh task-state read shows every task complete and no relevant validation remains red, the orchestrator MUST dispatch OpenSpec verification automatically. The verifier MUST run the repository's mandatory tests and build and report their commands with exit codes. The orchestrator MUST stop strictly on failed or incomplete verification, and after successful verification it MUST run the existing post-verification review gate unchanged.
 
 #### Scenario: Final task completes after the retry round
@@ -226,7 +226,7 @@ After a fresh task-state read shows every task complete and no relevant validati
 
 #### Scenario: Verification succeeds with executable evidence
 - **WHEN** the verifier reports successful mandatory tests and build with command and exit-code evidence
-- **THEN** the orchestrator presents the existing review selection gate before archive
+- **THEN** the orchestrator presents the existing automatic review selection gate before archive
 
 #### Scenario: Verification is not successful
 - **WHEN** mandatory tests or build fail, verification blocks, or executable evidence is incomplete

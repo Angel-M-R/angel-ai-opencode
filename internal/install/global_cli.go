@@ -13,6 +13,8 @@ const (
 	codegraphRegistryPackage   = "@colbymchenry/codegraph"
 	openSpecRegistryPackage    = "@fission-ai/openspec"
 	openSpecPackage            = openSpecRegistryPackage + "@latest"
+	tsgoRegistryPackage        = "@typescript/native-preview"
+	tsgoPackage                = tsgoRegistryPackage + "@latest"
 	openSpecMinimumNodeVersion = "20.19.0"
 )
 
@@ -40,6 +42,15 @@ var openSpecGlobalCLI = globalCLIDescriptor{
 	minimumNodeVersion: openSpecMinimumNodeVersion,
 }
 
+var tsgoGlobalCLI = globalCLIDescriptor{
+	optionKey:       tsgoOptionKey,
+	displayName:     "tsgo",
+	registryPackage: tsgoRegistryPackage,
+	installSpec:     tsgoPackage,
+	executable:      "tsgo",
+	versionArgs:     []string{"--version"},
+}
+
 var globalCLIDescriptors = []globalCLIDescriptor{
 	{
 		optionKey:       codegraphOptionKey,
@@ -50,6 +61,7 @@ var globalCLIDescriptors = []globalCLIDescriptor{
 		versionArgs:     []string{"--version"},
 	},
 	openSpecGlobalCLI,
+	tsgoGlobalCLI,
 }
 
 func selectedGlobalCLIs(extras map[string]bool) []globalCLIDescriptor {
@@ -140,6 +152,9 @@ func (inspection globalCLIInspection) reportLine() string {
 	if inspection.disposition == globalCLIInstall {
 		return "INSTALAR   " + inspection.descriptor.installSpec
 	}
+	if inspection.disposition == globalCLIOutdated {
+		return "ACTUALIZAR  " + inspection.descriptor.installSpec
+	}
 	line := fmt.Sprintf(
 		"CLI         %s: %s (installed %s",
 		inspection.descriptor.displayName,
@@ -173,6 +188,7 @@ type semanticVersion struct {
 
 func parseSemanticVersion(raw string) (semanticVersion, error) {
 	value := strings.TrimSpace(raw)
+	value = strings.TrimPrefix(value, "Version ")
 	value = strings.TrimPrefix(value, "v")
 	matches := semanticVersionPattern.FindStringSubmatch(value)
 	if matches == nil || hasInvalidNumericPrerelease(matches[4]) {
@@ -739,11 +755,21 @@ func applyGlobalCLIInspection(
 	commands globalCLICommands,
 ) (string, error) {
 	switch inspection.disposition {
-	case globalCLICurrent, globalCLIOutdated, globalCLIAhead, globalCLIRegistryUnverified:
+	case globalCLICurrent, globalCLIAhead, globalCLIRegistryUnverified:
 		return inspection.reportLine(), nil
 	case globalCLIInstall:
 		if inspection.registration.state != globalCLIPackageUnregistered ||
 			inspection.executablePath != "" || inspection.registryVersion == nil {
+			return "", fmt.Errorf(
+				"refusing unvalidated %s installation state for %s",
+				inspection.disposition,
+				inspection.descriptor.displayName,
+			)
+		}
+	case globalCLIOutdated:
+		if inspection.executablePath == "" || inspection.registryVersion == nil ||
+			(inspection.registration.state != globalCLIPackageRegistered &&
+				inspection.registration.state != globalCLIPackageUnregistered) {
 			return "", fmt.Errorf(
 				"refusing unvalidated %s installation state for %s",
 				inspection.disposition,
@@ -766,7 +792,11 @@ func applyGlobalCLIInspection(
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("instalado  %s (version %s)", inspection.descriptor.installSpec, version), nil
+	verb := "instalado"
+	if inspection.disposition == globalCLIOutdated {
+		verb = "actualizado"
+	}
+	return fmt.Sprintf("%s  %s (version %s)", verb, inspection.descriptor.installSpec, version), nil
 }
 
 func installGlobalCLIExecutable(

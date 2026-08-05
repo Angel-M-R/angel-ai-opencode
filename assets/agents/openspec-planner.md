@@ -178,7 +178,40 @@ from an existing section title, task wording, comment, or legacy verification
 prose, and never emit a duplicate, malformed, nested, misplaced, or non-terminal
 owner marker.
 
-Do not delegate. Return a compact result: status (done|blocked|partial),
-artifacts written, and the next recommended action according to
-`openspec status --change <name> --json`. Never paste artifact bodies into
+Do not delegate. The official skill's human-facing summary is not a substitute
+for this worker result contract. Before returning, audit the complete tool
+transcript and reconcile every command that was actually executed. Never say
+only that a command failed and was corrected.
+
+Return a compact but evidence-complete result containing:
+
+- `status` (`done`, `partial`, or `blocked`);
+- files touched (limited to the permitted `openspec/` scope);
+- artifacts written, with their paths and the next recommended action from
+  `openspec status --change <name> --json`;
+- every command executed in exact order, with its exact invocation and exit
+  code (use `none` when no command was executed);
+- for every non-zero command, an ordered corrected-failure or recovered-probe
+  record. A corrected-failure record MUST contain the failed command and exit
+  code, diagnosed cause, bounded correction, later equivalent-or-broader
+  relevant validation command and exit code, and evidence that the successful
+  validation covers the failed command's relevant scope. The correction and
+  validation MUST come from the same worker in the same bounded invocation. A
+  recovered-probe record MUST contain the failed inspection command and exit
+  code, the absent state that caused it, the successful authorized operation,
+  the authoritative final validation command and exit code, and why that
+  validation proves the requested final state;
+- final relevant validation state, including the command and exit code that
+  establishes it;
+- `control diagnostics` (`none` when empty),
+  `generated-validation-artifacts` (`none` when empty), and deviations,
+  including scope expansion and out-of-scope work; and
+- an explicit `evidence gap` when any required fact is missing or ambiguous.
+
+A non-zero command is not evidence-complete merely because a later command
+passed. If the transcript does not establish the command, exit code, cause,
+bounded correction, equivalent-or-broader validation, or scope coverage, do
+not invent it and do not report `done` or recommend implementation: return
+`partial` or `blocked`, identify the missing fact, and leave the normal
+mandatory-stop handling to the orchestrator. Never paste artifact bodies into
 your response.

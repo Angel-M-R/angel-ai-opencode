@@ -178,6 +178,16 @@ func TestValidateGlobalCLIRuntimesChecksOpenSpecNodeFloor(t *testing.T) {
 	}
 }
 
+func TestParseSemanticVersionAcceptsTsgoVersionOutput(t *testing.T) {
+	version, err := parseSemanticVersion("Version 7.0.0-dev.20260707.2\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := version.String(), "7.0.0-dev.20260707.2"; got != want {
+		t.Fatalf("parsed version = %q, want %q", got, want)
+	}
+}
+
 func TestValidateGlobalCLIRuntimesSkipsNodeWithoutRequirement(t *testing.T) {
 	commands := globalCLICommands{
 		lookPath: func(name string) (string, error) {

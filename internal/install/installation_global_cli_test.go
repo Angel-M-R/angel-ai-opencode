@@ -3,6 +3,7 @@ package install
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -40,6 +41,15 @@ func writeTestFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return content
 }
 
 func testCodegraphAssets(t *testing.T) string {
@@ -118,7 +128,7 @@ func (environment *injectedCLIEnvironment) commands() globalCLICommands {
 				return "/tools/pnpm", nil
 			case "node":
 				return "/tools/node", nil
-			case "codegraph", "openspec":
+			case "codegraph", "openspec", "tsgo":
 				if _, ok := environment.localVersions[name]; ok {
 					return "/tools/" + name, nil
 				}
@@ -407,6 +417,8 @@ func TestInjectedGlobalCLIClassificationsInPlanAndApply(t *testing.T) {
 					want := descriptor.displayName + ": " + classification.status
 					if classification.status == "install" {
 						want = "INSTALAR   " + descriptor.installSpec
+					} else if classification.status == "outdated" {
+						want = "ACTUALIZAR  " + descriptor.installSpec
 					}
 					if !hasLineContaining(plan, want) {
 						t.Fatalf("classification %q missing from plan: %v", want, plan)
@@ -424,8 +436,12 @@ func TestInjectedGlobalCLIClassificationsInPlanAndApply(t *testing.T) {
 						t.Fatal(err)
 					}
 					want := descriptor.displayName + ": " + classification.status
-					if classification.status == "install" {
-						want = "instalado  " + descriptor.installSpec + " (version " + classification.latest + ")"
+					if classification.status == "install" || classification.status == "outdated" {
+						verb := "instalado"
+						if classification.status == "outdated" {
+							verb = "actualizado"
+						}
+						want = verb + "  " + descriptor.installSpec + " (version " + classification.latest + ")"
 						if !reflect.DeepEqual(environment.installations, []string{descriptor.installSpec}) {
 							t.Fatalf("installations = %v", environment.installations)
 						}
@@ -438,6 +454,140 @@ func TestInjectedGlobalCLIClassificationsInPlanAndApply(t *testing.T) {
 				})
 			})
 		}
+	}
+}
+
+func TestTsgoSelectionConfiguresTypeScriptLSP(t *testing.T) {
+	environment := newInjectedCLIEnvironment(t, "npm")
+	environment.localVersions[tsgoGlobalCLI.executable] = "7.0.0"
+	environment.registrations[tsgoRegistryPackage] = true
+	environment.latestVersions[tsgoRegistryPackage] = "7.0.0"
+	useGlobalCLICommands(t, environment.commands())
+
+	target := t.TempDir()
+	opencodePath := filepath.Join(target, "opencode.json")
+	writeTestFile(t, opencodePath, `{"lsp":{"eslint":{"command":["eslint-language-server"]}},"custom":true}`)
+	request := InstallationRequest{
+		Extras:    map[string]bool{tsgoOptionKey: true},
+		Assets:    assetfs.Directory(testCodegraphAssets(t)),
+		ConfigDir: target,
+	}
+	if _, err := ApplyInstallation(request); err != nil {
+		t.Fatal(err)
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(readTestFile(t, opencodePath), &config); err != nil {
+		t.Fatal(err)
+	}
+	lsp := config["lsp"].(map[string]any)
+	typescript := lsp["typescript"].(map[string]any)
+	if !reflect.DeepEqual(typescript["command"], []any{"tsgo", "--lsp", "--stdio"}) {
+		t.Fatalf("typescript LSP command = %v", typescript["command"])
+	}
+	if _, ok := lsp["eslint"]; !ok {
+		t.Fatal("tsgo configuration removed unrelated LSP")
+	}
+	if _, ok := config["angel_ai"]; ok {
+		t.Fatal("tsgo configuration wrote unsupported angel_ai metadata")
+	}
+	if config["custom"] != true {
+		t.Fatal("tsgo configuration removed an unrelated config key")
+	}
+	if len(environment.installations) != 0 {
+		t.Fatalf("current tsgo triggered installation: %v", environment.installations)
+	}
+}
+
+func TestTsgoSelectionNormalizesBooleanLSP(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("lsp=%t", enabled), func(t *testing.T) {
+			environment := newInjectedCLIEnvironment(t, "npm")
+			environment.localVersions[tsgoGlobalCLI.executable] = "7.0.0"
+			environment.registrations[tsgoRegistryPackage] = true
+			environment.latestVersions[tsgoRegistryPackage] = "7.0.0"
+			useGlobalCLICommands(t, environment.commands())
+
+			target := t.TempDir()
+			opencodePath := filepath.Join(target, "opencode.json")
+			writeTestFile(t, opencodePath, fmt.Sprintf(`{"lsp":%t,"custom":true}`, enabled))
+			request := InstallationRequest{
+				Extras:    map[string]bool{tsgoOptionKey: true},
+				Assets:    assetfs.Directory(testCodegraphAssets(t)),
+				ConfigDir: target,
+			}
+			if _, err := ApplyInstallation(request); err != nil {
+				t.Fatal(err)
+			}
+
+			var config map[string]any
+			if err := json.Unmarshal(readTestFile(t, opencodePath), &config); err != nil {
+				t.Fatal(err)
+			}
+			lsp, ok := config["lsp"].(map[string]any)
+			if !ok {
+				t.Fatalf("normalized lsp = %T, want object", config["lsp"])
+			}
+			typescript, ok := lsp["typescript"].(map[string]any)
+			if !ok {
+				t.Fatalf("typescript LSP = %T, want object", lsp["typescript"])
+			}
+			if !reflect.DeepEqual(typescript["command"], []any{"tsgo", "--lsp", "--stdio"}) {
+				t.Fatalf("typescript LSP command = %v", typescript["command"])
+			}
+			if config["custom"] != true {
+				t.Fatal("tsgo configuration removed an unrelated config key")
+			}
+		})
+	}
+}
+
+func TestTsgoManualConfigurationConflictAbortsWithoutWrites(t *testing.T) {
+	environment := newInjectedCLIEnvironment(t, "npm")
+	environment.latestVersions[tsgoRegistryPackage] = "7.0.0"
+	useGlobalCLICommands(t, environment.commands())
+
+	target := t.TempDir()
+	opencodePath := filepath.Join(target, "opencode.json")
+	original := `{"lsp":{"typescript":{"command":["manual-tsserver"]}}}`
+	writeTestFile(t, opencodePath, original)
+	request := InstallationRequest{
+		Extras:    map[string]bool{tsgoOptionKey: true},
+		Assets:    assetfs.Directory(testCodegraphAssets(t)),
+		ConfigDir: target,
+	}
+	if _, err := ApplyInstallation(request); err == nil || !strings.Contains(err.Error(), "manually modified lsp.typescript") {
+		t.Fatalf("expected tsgo manual conflict, got %v", err)
+	}
+	if got := string(readTestFile(t, opencodePath)); got != original {
+		t.Fatalf("manual configuration was overwritten: %q", got)
+	}
+	if len(environment.installations) != 0 {
+		t.Fatalf("package installation started before conflict: %v", environment.installations)
+	}
+}
+
+func TestDeselectingTsgoPreservesExistingConfiguration(t *testing.T) {
+	environment := newInjectedCLIEnvironment(t, "npm")
+	useGlobalCLICommands(t, environment.commands())
+
+	target := t.TempDir()
+	opencodePath := filepath.Join(target, "opencode.json")
+	original := `{"lsp":{"eslint":{"command":["eslint-language-server"]},"typescript":{"command":["tsgo","--lsp","--stdio"]}}}` + "\n"
+	writeTestFile(t, opencodePath, original)
+	request := InstallationRequest{
+		Extras:    map[string]bool{tsgoOptionKey: false},
+		Assets:    assetfs.Directory(testCodegraphAssets(t)),
+		ConfigDir: target,
+	}
+	if _, err := ApplyInstallation(request); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(readTestFile(t, opencodePath)); got != original {
+		t.Fatalf("deselecting tsgo changed configuration: %q", got)
+	}
+	if len(environment.installations) != 0 {
+		t.Fatalf("deselecting tsgo triggered installation: %v", environment.installations)
 	}
 }
 
