@@ -75,6 +75,12 @@ concrete evidence from the local changes under review.
 Look at the complete local-change scope and mark which categories below it
 actually touches. Evaluate ONLY those categories.
 
+Before recommending that code be deleted, inlined, or restructured, apply
+Chesterton's Fence: inspect the relevant callers, behavioral tests, neighboring
+conventions, and history when needed to establish why the code exists. If its
+purpose or compatibility constraints remain unclear, do not present removal as
+safe. Report the uncertainty only when it is itself actionable and evidenced.
+
 ## Categories
 
 **Overengineering**
@@ -146,6 +152,13 @@ SUGGESTION` (overengineering/duplication/dead code/excess tests are rarely
 BLOCKER — use WARNING/SUGGESTION unless it actively risks a bug), the concrete
 evidence, whether introduced by this change or pre-existing, and the smallest
 behavior-preserving correction direction.
+
+For a correction that deletes, inlines, or restructures production code, also
+state the preservation boundary supported by the evidence: relevant inputs and
+outputs, error behavior, side effects, and their ordering. Existing behavioral
+test expectations are constraints; never recommend weakening or rewriting them
+merely to make a production-code simplification pass. A finding that targets an
+excess or implementation-coupled test must identify that test explicitly.
 
 Structural findings default to WARNING or SUGGESTION. Use BLOCKER only when
 concrete evidence shows the structure creates a risk of incorrect behavior,

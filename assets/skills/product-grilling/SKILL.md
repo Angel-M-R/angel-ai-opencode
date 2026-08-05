@@ -18,6 +18,9 @@ a document.
 - Facts are yours, decisions are theirs: anything discoverable from the
   codebase, docs, or existing OpenSpec artifacts you investigate with tools —
   never ask the user something you can look up.
+- Treat the bounded change selected by the interview preflight as the scope.
+  Do not reopen deferred subsystems during questioning; retain them as later
+  work or explicit non-goals.
 - 3–5 questions per round. After a round, summarize the assumptions collected
   so far and ask: correct something / another round / continue to planning.
 - Match the user's conversation language.

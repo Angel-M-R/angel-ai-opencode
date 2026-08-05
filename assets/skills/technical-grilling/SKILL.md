@@ -35,7 +35,10 @@ For each major technical decision in the plan, probe:
    depending on it?
 3. **Failure modes** — what breaks when this fails half-way? What does recovery
    look like?
-4. **Data & interfaces** — what shape crosses the boundary, and who owns it?
+4. **Data, interfaces & boundaries** — what shape crosses each boundary, and
+   who owns it? For every new or changed unit, establish its single
+   responsibility, how consumers use it, what it depends on, and whether its
+   internals can change without breaking those consumers.
 5. **Testing** — how will we know it works? What is hard to test in this design?
 6. **Migration & rollout** — does anything existing need to move? Can this ship
    incrementally?
@@ -53,3 +56,10 @@ End with a `## Technical decisions` bullet list: one line per confirmed
 decision with its chosen option. Combined with `## Product decisions` (if a
 product interview ran), this is the Brief the orchestrator passes to the
 planner. Do not act on the plan until the user confirms the Brief.
+
+When multiple decisions interact, precede confirmation with a compact
+`## Technical design` synthesis covering components, data/control flow,
+interfaces and ownership, failure and recovery, and verification. Scale it to
+the change; a simple independent decision keeps only the bullet list. This
+synthesis explains relationships between confirmed decisions and must not add
+new unasked scope.

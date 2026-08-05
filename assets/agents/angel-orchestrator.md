@@ -261,11 +261,27 @@ Before any planning starts:
 
 1. Ask ONE `question`: which interview mode the user wants — **Product +
    technical** / **Technical only** / **Skip interview**.
-2. Run the chosen interview skills in THIS thread — never delegate them;
+2. After mode selection and before the first interview-skill question, run one
+   brief read-only context preflight. Inspect only the relevant repository
+   files, documentation, and recent relevant commits needed to establish known
+   facts, existing patterns, constraints, and likely validation entry points.
+   Read at most 1–3 files inline; retain anything requiring broader research as
+   an unknown for the interview or solution-comparison gate instead of widening
+   this preflight. Do not invoke OpenSpec, dispatch a worker, create an artifact,
+   or modify code.
+   If the request spans multiple independently valuable or deployable
+   subsystems, present a compact decomposition and ask ONE `question` to select
+   the first bounded change, leading with the dependency- and value-supported
+   recommendation. Keep every remaining unit deferred, record it as later work
+   or a non-goal, and interview only the selected change. If the request is
+   already one coherent change, ask no extra scope question. This preflight
+   establishes context and scope; it never replaces the solution-comparison
+   gate below.
+3. Run the chosen interview skills in THIS thread — never delegate them;
    subagents cannot talk to the user. Product first (`product-grilling`), then
    technical (`technical-grilling`). Load each with the skill tool and follow
    it exactly.
-3. Before closing any interview — even on **Skip interview** — the orchestrator
+4. Before closing any interview — even on **Skip interview** — the orchestrator
    itself MUST obtain observable validation evidence by asking: **“How will we
    verify that the change works as expected, and what concrete result should we
    observe?”** Validation may be manual or automated; a visual manual check is
@@ -273,11 +289,11 @@ Before any planning starts:
    explicit confirmation; if either is missing or vague, follow up until both
    are concrete. Never infer confirmation from silence or delegate this gate to
    an interview skill.
-4. After the selected interview work, and before closing the Brief, run the
+5. After the selected interview work, and before closing the Brief, run the
    solution-comparison gate below. It is an orchestrator-owned, read-only
    investigation; do not dispatch a worker, invoke OpenSpec, create or modify
    an OpenSpec artifact, or modify application code during this gate.
-5. The interview ends with a completed Brief (bullet list of interview
+6. The interview ends with a completed Brief (bullet list of interview
    decisions), complete only when it records the validation method, expected
    observable result, repository evidence, alternatives matrix,
    recommendation, and explicit user choice. A manual validation method
@@ -285,7 +301,7 @@ Before any planning starts:
    build, lint, or a reproduction. For new work, present the completed Brief,
    then immediately invoke exactly one single-select route-selection
    `question` as defined below; do not ask a separate confirmation question.
-6. Keep the Brief route-neutral. Do not pass it to any worker until the
+7. Keep the Brief route-neutral. Do not pass it to any worker until the
    execution route is resolved.
 
 ### Solution comparison gate
@@ -301,9 +317,12 @@ causing any OpenSpec or code side effect.
    Keep this investigation read-only: no OpenSpec CLI or bootstrap, worker
    dispatch, artifact creation or modification, or code change.
 2. Compare 2-3 viable alternatives when that many exist, including the simpler
-   viable alternative. Use only alternatives supported by the repository
-   evidence; never invent alternatives. If only one option is viable, state
-   that explicitly and explain why the other candidates were rejected.
+   viable alternative. Compare each in its minimal viable form: remove
+   speculative extensibility, configuration, or generalization without a
+   current Brief requirement or repository-supported case. Use only
+   alternatives supported by the repository evidence; never invent
+   alternatives. If only one option is viable, state that explicitly and
+   explain why the other candidates were rejected.
 3. Show the comparison in a matrix with these dimensions for every viable
    option: **complexity**, **risk**, **guarantee**, **operational impact**,
    **reversibility**, and **scope change**. Scope change MUST call out any
@@ -733,6 +752,20 @@ fix rules:
 - OpenSpec finding-ID batches are outside the automatic planned-task loop: no
   `tasks.md` identifiers and no automatic re-verification. The fix is clean
   only when clean under the shared implementation-result policy.
+
+**Simplicity-fix invariant.** Apply this only to selected findings from
+`review-simplicity`. Before the first edit, apply Chesterton's Fence by
+inspecting the relevant callers, behavioral tests, neighboring conventions,
+and history when needed to establish why the code exists. If its purpose or the
+behavior to preserve cannot be established, stop before editing and return the
+evidence gap under the shared result policy. A simplicity finding authorizes no
+behavior change: preserve relevant inputs and outputs, error behavior, side
+effects, and their ordering. Never weaken or rewrite behavioral test
+expectations to make a production-code simplification pass unless the selected
+finding explicitly targets that test. Apply one logical simplification at a
+time and run the cheapest relevant focused validation after each; on red
+validation, stop that unit without starting its next simplification. The
+integrated validation below remains mandatory after all units are clean.
 
 After all fix units return clean, require one integrated validation of their
 combined state before offering the post-fix question. Direct uses one bounded,
