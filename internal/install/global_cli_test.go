@@ -2,10 +2,47 @@ package install
 
 import (
 	"errors"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestRunGlobalCLICommandKeepsSuccessfulStderrOutOfJSONOutput(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not available")
+	}
+	output, err := runGlobalCLICommand(
+		shell,
+		"-c",
+		`printf '%s\n' '"7.0.0-dev.20260707.2"'; printf '%s\n' 'npm warn Unknown project config "min-release-age".' >&2`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(output), "\"7.0.0-dev.20260707.2\"\n"; got != want {
+		t.Fatalf("command output = %q, want %q", got, want)
+	}
+}
+
+func TestRunGlobalCLICommandIncludesStderrOnFailure(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not available")
+	}
+	output, err := runGlobalCLICommand(
+		shell,
+		"-c",
+		`printf '%s' 'partial stdout'; printf '%s\n' 'npm error registry unavailable' >&2; exit 1`,
+	)
+	if err == nil {
+		t.Fatal("expected command failure")
+	}
+	if got, want := string(output), "partial stdout\nnpm error registry unavailable\n"; got != want {
+		t.Fatalf("command output = %q, want %q", got, want)
+	}
+}
 
 func TestSelectGlobalPackageManagerPrefersNPM(t *testing.T) {
 	var lookups []string

@@ -81,9 +81,25 @@ type globalCLICommands struct {
 
 var systemGlobalCLICommands = globalCLICommands{
 	lookPath: exec.LookPath,
-	run: func(path string, args ...string) ([]byte, error) {
-		return exec.Command(path, args...).CombinedOutput()
-	},
+	run:      runGlobalCLICommand,
+}
+
+func runGlobalCLICommand(path string, args ...string) ([]byte, error) {
+	command := exec.Command(path, args...)
+	stdout, err := command.Output()
+	if err == nil {
+		return stdout, nil
+	}
+	exitError, ok := err.(*exec.ExitError)
+	if !ok || len(exitError.Stderr) == 0 {
+		return stdout, err
+	}
+	output := append([]byte(nil), stdout...)
+	if len(output) > 0 && output[len(output)-1] != '\n' {
+		output = append(output, '\n')
+	}
+	output = append(output, exitError.Stderr...)
+	return output, err
 }
 
 type globalPackageManager struct {
