@@ -13,6 +13,10 @@ a document.
 
 - Ask ONE question at a time with the `question` tool, then STOP and wait.
   Never batch questions, never continue past an unanswered question.
+- This applies to every request for user input, including confirmations,
+  corrections, round selection, and the final decision-list confirmation.
+  Never put a question in prose or ask the user to reply in plain text. Present
+  any summary first, then invoke the `question` tool and STOP.
 - Offer concrete answer options and put your recommended one first, marked as
   recommended. The user decides; you never assume.
 - Facts are yours, decisions are theirs: anything discoverable from the
@@ -44,6 +48,7 @@ territory that is already obvious or answered:
 ## Output
 
 End with a `## Product decisions` bullet list: one line per confirmed decision,
-including scope boundary and non-goals. Ask the user to confirm it. This brief
-feeds the technical interview (if any) and then the planner — do not proceed
-until confirmed.
+including scope boundary and non-goals. Immediately invoke the `question` tool
+to ask the user to confirm or correct it, then STOP. Never append that request
+as prose. This brief feeds the technical interview (if any) and then the planner
+— do not proceed until confirmed.

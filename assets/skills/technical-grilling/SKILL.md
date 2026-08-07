@@ -14,6 +14,10 @@ until the user confirms shared understanding.
 
 - Ask ONE question at a time with the `question` tool, then STOP and wait.
   Never batch, never answer your own question and move on.
+- This applies to every request for user input, including confirmations,
+  corrections, and the final Brief confirmation. Never put a question in prose
+  or ask the user to reply in plain text. Present any summary first, then invoke
+  the `question` tool and STOP.
 - Facts vs decisions: how the code currently works, what dependencies exist,
   what patterns the repo uses — those are facts; investigate them with tools
   and never ask the user. Tradeoffs, priorities, and interfaces are decisions;
@@ -48,14 +52,17 @@ For each major technical decision in the plan, probe:
 ## Ending condition
 
 The grilling ends only when BOTH hold: no unexplored branches remain, and the
-user explicitly confirms shared understanding of the resulting plan.
+user explicitly confirms shared understanding of the resulting plan through
+the `question` tool.
 
 ## Output
 
 End with a `## Technical decisions` bullet list: one line per confirmed
 decision with its chosen option. Combined with `## Product decisions` (if a
 product interview ran), this is the Brief the orchestrator passes to the
-planner. Do not act on the plan until the user confirms the Brief.
+planner. Immediately invoke the `question` tool to ask the user to confirm or
+correct the Brief, then STOP; never append that request as prose. Do not act on
+the plan until the user confirms the Brief.
 
 When multiple decisions interact, precede confirmation with a compact
 `## Technical design` synthesis covering components, data/control flow,

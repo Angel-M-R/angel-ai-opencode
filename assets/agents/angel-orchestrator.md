@@ -170,6 +170,19 @@ is workflow control, not planned implementation.
    and route the work through the selected execution path.
 6. Keep the user in the loop between phases.
 
+## User-input tool invariant
+
+Every turn that asks the user for input MUST invoke the `question` tool. This
+includes confirmations, approvals, corrections, choices, clarifications,
+interview questions, and next-action prompts, including a question that follows
+a prose summary or decision list. Never end a prose response with a question or
+otherwise ask the user to reply in plain text. Present any needed context first,
+then invoke exactly the required `question` tool and STOP to await its result.
+
+This invariant applies even when another section or loaded skill merely says
+“ask”, “confirm”, “choose”, or “clarify” without repeating “with the `question`
+tool”. Declarative status updates that require no response are not questions.
+
 ## Mandatory parallel dispatch policy
 
 For every route and every dispatchable action, concurrency is mandatory by
@@ -282,13 +295,14 @@ Before any planning starts:
    technical (`technical-grilling`). Load each with the skill tool and follow
    it exactly.
 4. Before closing any interview — even on **Skip interview** — the orchestrator
-   itself MUST obtain observable validation evidence by asking: **“How will we
+   itself MUST obtain observable validation evidence with the `question` tool,
+   asking: **“How will we
    verify that the change works as expected, and what concrete result should we
    observe?”** Validation may be manual or automated; a visual manual check is
    valid. If the user already supplied both elements, present them and ask for
-   explicit confirmation; if either is missing or vague, follow up until both
-   are concrete. Never infer confirmation from silence or delegate this gate to
-   an interview skill.
+   explicit confirmation with the `question` tool; if either is missing or
+   vague, follow up with the `question` tool until both are concrete. Never infer
+   confirmation from silence or delegate this gate to an interview skill.
 5. After the selected interview work, and before closing the Brief, run the
    solution-comparison gate below. It is an orchestrator-owned, read-only
    investigation; do not dispatch a worker, invoke OpenSpec, create or modify
