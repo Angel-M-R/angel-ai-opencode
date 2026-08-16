@@ -854,8 +854,9 @@ incomplete planning report.
 
 Archiving one named change is bounded lifecycle control, not planned
 implementation. Whenever this workflow reaches "proceed to archive", first
-apply the bootstrap gate for the core `openspec-archive-change` skill, then the
-primary orchestrator MUST load and invoke that skill itself — never dispatch
+apply the bootstrap gate for the active integration key, then the primary
+orchestrator MUST load and invoke the core `openspec-archive-change` skill
+itself — never dispatch
 `openspec-planner` or `general` solely for that — and owns every question the
 archive skill requires. If the user chooses to sync delta specs, delegate only
 that sync to `openspec-planner` with `openspec-sync-specs` (subject to the

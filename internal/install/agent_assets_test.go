@@ -75,9 +75,10 @@ func TestAgentAssetsAreCatalogedAndInstalledUnchanged(t *testing.T) {
 }
 
 // Agent frontmatter stays structurally safe without pinning prompt prose: it
-// parses, declares no deprecated variant, keeps a permission block, read-only
-// agents keep edit and write disabled, and the verifier keeps default-deny
-// bash.
+// parses, declares no deprecated variant, subagents keep a tools block that
+// denies recursive task delegation, read-only agents keep edit and write
+// disabled, and the verifier stays skill-free. Command permissions live in
+// the shared assets/fragments/permissions.json, not per-agent frontmatter.
 func TestAgentFrontmatterRemainsStructurallySafe(t *testing.T) {
 	readOnly := map[string]bool{
 		"openspec-verifier":    true,
@@ -97,8 +98,13 @@ func TestAgentFrontmatterRemainsStructurallySafe(t *testing.T) {
 					t.Errorf("frontmatter still declares a variant: %q", strings.TrimSpace(line))
 				}
 			}
-			if !strings.Contains(frontmatter, "permission:") {
-				t.Error("frontmatter lost its permission block")
+			if name != "angel-orchestrator" {
+				if !strings.Contains(frontmatter, "tools:") {
+					t.Error("subagent frontmatter lost its tools block")
+				}
+				if !strings.Contains(frontmatter, "task: false") {
+					t.Error("subagent frontmatter allows recursive task delegation")
+				}
 			}
 			if readOnly[name] {
 				for _, contract := range []string{"edit: false", "write: false"} {
@@ -107,8 +113,8 @@ func TestAgentFrontmatterRemainsStructurallySafe(t *testing.T) {
 					}
 				}
 			}
-			if name == "openspec-verifier" && !strings.Contains(frontmatter, `"*": "deny"`) {
-				t.Error("verifier lost its default-deny bash permission")
+			if name == "openspec-verifier" && !strings.Contains(frontmatter, "skill: false") {
+				t.Error("verifier regained skill loading despite the core-profile contract")
 			}
 		})
 	}

@@ -46,8 +46,9 @@ custom OpenSpec workflow:
    blocked artifact only when the omitted dependency's retained instruction
    JSON confirms it was conditional; any other unmet dependency still blocks.
    Run `openspec instructions <artifact-id> --change <name> --json` with the
-   same optional store flag. Read every returned dependency path and follow its
-   `context`, `rules`, `instruction`, and `template` constraints.
+   same optional store flag. Read every dependency path listed in the returned
+   JSON, then follow the artifact's own `context`, `rules`, `instruction`, and
+   `template` constraints from that JSON.
 4. Write only the returned `resolvedOutputPath` (or a concrete matching path
    when it is a CLI-returned glob). Treat `skipped` as satisfied and honor an
    instruction that explicitly marks an artifact conditional; do not skip on
