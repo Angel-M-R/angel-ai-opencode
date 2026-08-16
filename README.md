@@ -22,7 +22,39 @@ angel-ai update                # forces an update check
 
 ## Harness Design comparison
 
+The comparison brings together tables and explanations covering agents,
+planning, specs and more
+
+Because every OpenCode subagent can run on its own model, the harness can mix
+them by role: a highly capable model as the orchestrator, cheaper models as the
+executor workers, and a different model again for the reviewers. The wizard's
+agent-models step configures this per-agent selection.
+
 **[Read the full design comparison](docs/harness-comparison.md)**
+
+## Orchestrator workflow
+
+The [`angel-orchestrator`](assets/agents/angel-orchestrator.md) agent is a thin
+coordinator: it interviews the user, builds a confirmed Brief, routes the work
+through Direct workers or the OpenSpec workflow, and closes with an optional
+review gate.
+
+```mermaid
+flowchart LR
+    prompt([User prompt]) --> triage{Trivial?}
+    triage -- yes --> quick[Quick lane<br/>inline change + quick check]
+    triage -- no --> interview[Interview gate<br/>Product + Technical / Technical only / Skip]
+    interview --> route{Route selection}
+
+    route -- Direct --> direct[general workers<br/>implementation + integrated validation]
+    route -- OpenSpec --> openspec[OpenSpec agents<br/>planner → implementer → verifier]
+
+    direct --> review{Review gate<br/>multi-select}
+    openspec --> review
+    review --> correctness[review-correctness]
+    review --> security[review-security-risk]
+    review --> simplicity[review-simplicity]
+```
 
 ## What it does
 
@@ -47,8 +79,7 @@ existing configuration.
 
 ## Extras
 
-The last wizard step offers standalone integrations and UI toggles. All of them
-are selected by default except cmux, which requires `cmux` on the PATH.
+The last wizard step offers standalone integrations and UI toggles.
 
 - **[CodeGraph](https://github.com/colbymchenry/codegraph)** — installs the
   CLI, registers the local MCP server, and appends its guidance to `AGENTS.md`.
