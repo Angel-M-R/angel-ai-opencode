@@ -1,12 +1,5 @@
 
-```
-     _                     _       _     _
-    / \   _ __   __ _  ___| |     / \   | |
-   / _ \ | '_ \ / _` |/ _ \ |    / _ \  | |
-  / ___ \| | | | (_| |  __/ |   / ___ \ | |
- /_/   \_\_| |_|\__, |\___|_|  /_/   \_\|_|
-                 |___/
-```
+![Angel AI OpenCode interface](docs/images/angel-ai-opencode-interface.png)
 
 ## Instalación
 
