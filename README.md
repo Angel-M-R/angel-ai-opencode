@@ -27,17 +27,6 @@ memoria, specs, ahorro de tokens, revisión final y MCPs de siete proyectos.
 
 **[Leer la comparativa de diseño completa](docs/harness-comparison.md)**
 
-
-## Uso desde el repositorio
-
-```sh
-go run .                  # abre el wizard
-go run . --all            # instala todo sin TUI
-go run . --all --dry-run  # muestra el plan sin tocar nada
-go run . --target /ruta   # instalar en otro directorio (para probar)
-```
-
-
 ## Qué edita
 
 Todo el contenido vive en `assets/` y se edita a mano — el código Go no hay
@@ -55,9 +44,11 @@ destino, agrupado por dónde acaba:
 | `~/.config/opencode/AGENTS.md` | Reglas globales de comportamiento (+ reglas de CodeGraph si se selecciona) |
 | `~/.config/opencode/opencode.json` | MCP, permisos y ajustes que se mergean sobre el existente (+ config de CodeGraph si se selecciona) |
 
+## Uso desde el repositorio
 
-## Prerequisitos en la máquina destino
-
-- [opencode](https://opencode.ai)
-- `npm`, necesario si se selecciona CodeGraph y el instalador debe instalar su CLI
-- CLI de OpenSpec: `npm i -g @fission-ai/openspec` (los skills `openspec-*` lo invocan)
+```sh
+go run .                  # abre el wizard
+go run . --all            # instala todo sin TUI
+go run . --all --dry-run  # muestra el plan sin tocar nada
+go run . --target /ruta   # instalar en otro directorio (para probar)
+```
