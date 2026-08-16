@@ -254,11 +254,19 @@ func TestOpenSpecBootstrapDelegatesProjectIntegrationToOpenSpec(t *testing.T) {
 	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
 	normalized := strings.Join(strings.Fields(orchestrator), " ")
 	for _, required := range []string{
+		"openspec config profile core",
+		"openspec config set delivery both",
+		"openspec context --json",
 		"openspec init --tools opencode",
 		"openspec update",
-		"current global OpenSpec profile, workflow, and delivery configuration",
-		"context-and-skill keys",
-		"<required-skill>/SKILL.md",
+		"official core profile",
+		"Verify all six official core skill files",
+		"tool host",
+		"separate from the selected planning store",
+		"resolved planning paths",
+		"source `nearest`",
+		"no_openspec_root",
+		"no_root_with_registered_stores",
 	} {
 		if !strings.Contains(normalized, required) {
 			t.Errorf("OpenSpec bootstrap contract is missing %q", required)
@@ -269,9 +277,86 @@ func TestOpenSpecBootstrapDelegatesProjectIntegrationToOpenSpec(t *testing.T) {
 		"metadata.generatedBy",
 		"~/.config/opencode/skills/openspec/",
 		"Never run `openspec update`",
+		"current global OpenSpec profile, workflow, and delivery configuration",
+		"enable it with `openspec config profile`",
+		"context-and-skill",
+		"<required-core-skill",
 	} {
 		if strings.Contains(orchestrator, forbidden) {
 			t.Errorf("OpenSpec bootstrap retains obsolete contract %q", forbidden)
+		}
+	}
+}
+
+func TestOpenSpecPlannerContinuesPartialChangesWithOfficialCLI(t *testing.T) {
+	orchestrator := strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " ")
+	planner := strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "openspec-planner.md")), " ")
+
+	for _, required := range []string{
+		"core artifact continuation protocol",
+		"openspec status --change <name> --json",
+		"openspec instructions <artifact-id> --change <name> --json",
+		"required transitive artifact set",
+		"resolvedOutputPath",
+		"re-run status after each artifact",
+		"exact writes authorized by that skill",
+		"resolved planning home",
+		"blocked only by explicitly omitted conditional dependencies",
+	} {
+		if !strings.Contains(planner, required) {
+			t.Errorf("planner continuation contract is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		"partially planned existing change",
+		"core artifact continuation protocol",
+	} {
+		if !strings.Contains(orchestrator, required) {
+			t.Errorf("orchestrator continuation route is missing %q", required)
+		}
+	}
+}
+
+func TestOpenSpecAgentsUseOnlyOfficialCoreWorkflowSkills(t *testing.T) {
+	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
+	planner := readRepositoryAsset(t, "agents", "openspec-planner.md")
+	implementer := readRepositoryAsset(t, "agents", "openspec-implementer.md")
+	verifier := readRepositoryAsset(t, "agents", "openspec-verifier.md")
+	normalizedVerifier := strings.Join(strings.Fields(verifier), " ")
+	combined := strings.Join([]string{orchestrator, planner, implementer, verifier}, "\n")
+
+	for _, required := range []string{
+		"openspec-propose",
+		"openspec-explore",
+		"openspec-apply-change",
+		"openspec-update-change",
+		"openspec-sync-specs",
+		"openspec-archive-change",
+	} {
+		if !strings.Contains(combined, required) {
+			t.Errorf("official core workflow contract is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"openspec-new-change",
+		"openspec-continue-change",
+		"openspec-ff-change",
+		"openspec-bulk-archive-change",
+		"openspec-verify-change",
+		"openspec-onboard",
+	} {
+		if strings.Contains(combined, forbidden) {
+			t.Errorf("agent assets still depend on non-core workflow %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"does not load an OpenSpec verification skill",
+		"openspec status --change <name> --json",
+		"openspec instructions apply --change <name> --json",
+		"completeness, correctness, and coherence",
+	} {
+		if !strings.Contains(normalizedVerifier, required) {
+			t.Errorf("core-compatible verifier contract is missing %q", required)
 		}
 	}
 }

@@ -52,8 +52,13 @@ The OpenSpec extra installs or updates only the official OpenSpec CLI. When an
 OpenSpec workflow is first used in a project, Angel AI runs
 `openspec init --tools opencode`; for an existing initialized project, it runs
 `openspec update`. OpenSpec owns the resulting project-local `.opencode/` files
-and generates them from the user's current global profile, workflow selection,
-and delivery mode. Angel AI does not ship copies of those skills.
+and generates them from its official `core` profile with both skills and
+commands. Angel AI does not ship copies of those skills or use custom OpenSpec
+workflow profiles. Final verification remains an Angel AI protocol driven by
+the official OpenSpec CLI because verification is not part of the core profile.
+When a registered store is selected, planning stays in that store while the
+official OpenCode integration is initialized or refreshed in the working
+project that must load it.
 
 ## Usage from the repository
 

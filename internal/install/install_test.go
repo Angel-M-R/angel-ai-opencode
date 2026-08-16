@@ -77,14 +77,14 @@ func TestApplyReplacesOnlyMatchingFilesAndSkipsIdenticalContent(t *testing.T) {
 	}
 }
 
-func TestApplyRecursivelyCopiesNestedOpenSpecSkills(t *testing.T) {
+func TestApplyRecursivelyCopiesNestedSkillAssets(t *testing.T) {
 	assets := t.TempDir()
 	want := map[string]string{
-		"openspec-apply-change":  "# apply\n",
-		"openspec-verify-change": "# verify\n",
+		"references": "# references\n",
+		"scripts":    "# scripts\n",
 	}
 	for name, content := range want {
-		write(t, filepath.Join(assets, "skills", "openspec", name, "SKILL.md"), content)
+		write(t, filepath.Join(assets, "skills", "example", name, "README.md"), content)
 	}
 	categories, err := catalog.Load(assetfs.Directory(assets))
 	if err != nil {
@@ -98,7 +98,7 @@ func TestApplyRecursivelyCopiesNestedOpenSpecSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, content := range want {
-		path := filepath.Join(target, "skills", "openspec", name, "SKILL.md")
+		path := filepath.Join(target, "skills", "example", name, "README.md")
 		if got := string(readFile(t, path)); got != content {
 			t.Errorf("installed %s = %q, want %q", path, got, content)
 		}

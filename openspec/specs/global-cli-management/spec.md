@@ -23,7 +23,7 @@ The installer SHALL expose an `OpenSpec` extra that is preselected in the intera
 - **THEN** the installer updates it with `@fission-ai/openspec@latest`
 
 ### Requirement: OpenSpec owns its project integration
-The repository MUST NOT vendor OpenSpec-generated skills or commands. Selecting the OpenSpec extra SHALL install or update only the official OpenSpec CLI. Project bootstrap SHALL delegate OpenCode skill and command generation to the installed CLI so the user's current global OpenSpec profile, workflow selection, and delivery mode determine the generated project-local files.
+The repository MUST NOT vendor OpenSpec-generated skills or commands. Selecting the OpenSpec extra SHALL install or update only the official OpenSpec CLI. Project bootstrap SHALL configure the official `core` profile with `both` delivery and delegate OpenCode skill and command generation to the installed CLI. Angel AI MUST NOT define, preserve, or request a custom OpenSpec workflow profile.
 
 #### Scenario: Wizard loads the skill catalog
 - **WHEN** the catalog scans the repository assets
@@ -35,7 +35,7 @@ The repository MUST NOT vendor OpenSpec-generated skills or commands. Selecting 
 
 #### Scenario: Project integration is generated
 - **WHEN** the OpenSpec bootstrap initializes or updates a local project
-- **THEN** the official CLI generates the OpenCode integration under that project according to the user's current global OpenSpec policy
+- **THEN** the official CLI generates the OpenCode integration under that project from the official `core` workflow set with skills and commands
 
 ### Requirement: Gentle AI global cleanup is manual, backed up, and evidence-based
 The installer MUST NOT detect, compare, back up, or remove legacy Gentle AI files. For this machine's one-time migration, cleanup SHALL use the Gentle AI source repository read-only as ownership evidence, create one timestamped backup of every item to be removed or edited before mutation, and limit deletion to the confirmed Gentle AI allowlist. The cleanup SHALL preserve the Angel-managed skill set and every file without ownership evidence, validate the resulting JSON configuration, prove retained skills remain byte-identical, and restart OpenCode only after validation succeeds.

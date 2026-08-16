@@ -681,7 +681,7 @@ two or more lenses are selected.
 | Implement planned tasks | No | `openspec-implementer` |
 | Verify an implementation | No | `openspec-verifier` |
 | Archive one named OpenSpec change after authorization | Yes | primary orchestrator via `openspec-archive-change` |
-| Bulk archive OpenSpec changes | No | `openspec-planner` |
+| Archive multiple OpenSpec changes | Yes, sequentially | primary orchestrator via repeated `openspec-archive-change` |
 | Quick state checks (git status, ls) | Yes | — |
 | Ad-hoc work outside any OpenSpec change | Trivial: yes (Quick lane) | Otherwise `general` via route selection |
 
@@ -700,24 +700,29 @@ openspec list --json
 openspec status --change <name> --json
 ```
 
-Route by what status reports as ready or missing. The artifact graph
-(proposal → specs/design → tasks → apply) is owned by OpenSpec; do not maintain
-a parallel one.
+Route by what status reports as ready or missing. The artifact graph is owned
+by OpenSpec; do not maintain a parallel one. For a new change, dispatch
+`openspec-planner` with `openspec-propose`. For a partially planned existing
+change whose required artifacts are missing, dispatch it with the **core
+artifact continuation protocol** below. Once every apply-required artifact is
+ready, enter the planned-task implementation state. Do not substitute the
+non-core continue workflow.
 
 ### Bootstrap gate before OpenSpec workers
 
 Keep a session-only (never persisted) set of successfully bootstrapped
-context-and-skill keys: `store:<id>|skill:<skill-name>` for an explicit
-registered store, or `<resolved-project-root>|skill:<skill-name>` for a local
-project (retain that association for the session). Before dispatching
-`openspec-planner`, `openspec-implementer`, or `openspec-verifier`, skip
-bootstrap only when the exact context-and-skill key is already in the set; a
-different project root, store, or required skill MUST be bootstrapped.
+integration keys: the resolved project root for a local project, or the pair
+`store:<id>@<canonical-tool-host>` for an explicit registered store. The tool
+host is the working project whose OpenCode process must load the generated
+skills; it is separate from the selected planning store. Before
+dispatching `openspec-planner`, `openspec-implementer`, or `openspec-verifier`,
+skip bootstrap only when the exact integration key is already in the set; a
+different project root, store, or store tool host MUST be bootstrapped.
 Otherwise dispatch one short `general` task with the prompt below (substituting
-the working directory, exact required skill, and optional store id, adding no
-unrelated work). Add the returned context-and-skill key and dispatch the
-requested worker only when every blocking OpenSpec JSON readiness step succeeds
-and the result is otherwise clean under the shared
+the working directory and optional store id, adding no unrelated work). Add the
+returned integration key
+and dispatch the requested worker only when every blocking OpenSpec JSON
+readiness step succeeds and the result is otherwise clean under the shared
 implementation-result policy; an unavailable or non-zero `codegraph init` is a
 retained advisory warning, excluded from that classification, and never blocks
 otherwise-green readiness. Any real readiness failure or other non-clean result
@@ -725,47 +730,58 @@ is a mandatory stop: retain and report its status, diagnostic, commands, and
 exit codes, then apply the shared mandatory-stop policy.
 
 ```text
-Run only an OpenSpec readiness bootstrap for <working-directory> and official
-skill <required-skill>. Return the Shared corrected-failure result fields
-supplied by the orchestrator, plus the resolved context-and-skill key, advisory
-warnings, and the blocking reason if any. Do not delegate, inspect application
-code, or change files except the permitted initialization or update below.
+Run only an OpenSpec readiness bootstrap for <working-directory>. Return the
+Shared corrected-failure result fields supplied by the orchestrator, plus the
+resolved integration key, planning context, tool host, resolved planning paths,
+advisory warnings, and the blocking reason if any. Do not
+delegate, inspect application code, or change files except the permitted
+official OpenSpec configuration, initialization, or update below.
 
-1. Treat OpenSpec JSON output as the only readiness source. For an explicit
-   registered store <id>, run `openspec list --json --store <id>` and use
-   `store:<id>` as the context key. Otherwise run `openspec list --json` in the
-   requested working directory and use its resolved project root as the key.
-   Never infer readiness from conversation or filesystem presence.
-2. If `openspec` cannot be executed, block and tell the user to install it with
+1. If `openspec` cannot be executed, block and tell the user to install it with
    this repository installer's `OpenSpec` extra.
-3. Never initialize for an explicit store. For a local context only, when the
-   first list JSON has no resolvable root, run exactly
-   `openspec init --tools opencode`, then `openspec list --json` once more. If
-   initialization fails or the follow-up JSON still has no resolvable root,
-   block. Initialize at most once.
-4. When the first list JSON resolves an existing local root, run exactly
-   `openspec update` without `--force`, then recheck readiness with
-   `openspec list --json`. If update reports that no tools are configured, run
-   `openspec init --tools opencode` once to migrate a project previously
-   initialized with `--tools none`, then perform the JSON readiness recheck. A
-   failed update, migration init, or follow-up JSON check blocks worker launch.
-5. Let both init and update use the current global OpenSpec profile, workflow,
-   and delivery configuration. Never run `openspec config`, pass `--profile`,
-   or otherwise change that policy. OpenSpec owns the project-local skills and
-   commands it generates; never copy them from Angel AI assets.
-6. Before dispatch, verify that `<required-skill>/SKILL.md` exists under the
-   resolved project's `.opencode/skills/` directory for a local context, or
-   under `<working-directory>/.opencode/skills/` for an explicit store. If the
-   user's profile or delivery mode excludes it, or a store has no local
-   OpenCode integration providing it, block and tell the user to enable it with
-   `openspec config profile` and initialize the working project as needed; do
-   not alter the profile or initialize an unrelated project on the user's
-   behalf.
+2. Run exactly `openspec config profile core`, followed by exactly
+   `openspec config set delivery both`. Any failure blocks. This official core
+   profile and delivery mode are Angel AI's OpenSpec contract; never select,
+   preserve, or generate a custom workflow profile.
+3. Treat OpenSpec JSON output as the only planning-readiness source. For an
+   explicit registered store <id>, run `openspec list --json --store <id>`,
+   retain the store's resolved planning paths, and use
+   `store:<id>@<canonical-tool-host>` as the integration key. Otherwise run
+   `openspec list --json` in the requested working directory, retain its
+   resolved planning paths, and use its resolved project root as both tool host
+   and integration key. Never infer planning readiness from conversation or
+   filesystem presence.
+4. Resolve the tool host separately from the selected planning store. Run
+   exactly `openspec context --json` without `--store` in the requested working
+   directory. A returned local root with source `nearest` is an existing local
+   initialization and its root is the canonical tool host. The exact
+   `no_openspec_root` or `no_root_with_registered_stores` diagnostic, or a
+   returned root whose source is a declared or global store rather than
+   `nearest`, means the requested working directory is an uninitialized tool
+   host; these expected probe results are recoverable by step 5. Any other
+   failure or unhealthy context blocks.
+5. Prepare the OpenCode integration in that tool host. When step 4 found an
+   existing local initialization, run exactly `openspec update` there without
+   `--force`; if update reports that no tools are configured, run
+   `openspec init --tools opencode` once there. When step 4 found an
+   uninitialized tool host, run exactly `openspec init --tools opencode` there.
+   Then re-run the same JSON planning-readiness command from step 3. A failed
+   update or init, or a follow-up JSON result that no longer resolves the same
+   local root or explicit store, blocks worker launch. Initialize at most once.
+   Never run init or update against the selected store root merely because it
+   is the planning context.
+6. OpenSpec owns the project-local skills and commands generated from core;
+   never copy or modify them as Angel AI assets. Verify all six official core
+   skill files exist under the tool host's `.opencode/skills/` directory,
+   separate from the selected planning store: `openspec-propose`, `openspec-explore`,
+   `openspec-apply-change`, `openspec-update-change`, `openspec-sync-specs`, and
+   `openspec-archive-change`. Any missing core skill blocks as an incomplete or
+   corrupt OpenCode integration; never switch to a custom profile to obtain it.
 7. Complete every blocking readiness step above before CodeGraph preparation.
-   An explicit store without a local project root skips CodeGraph preparation.
-   For a local root, if `<project-root>/.codegraph/` exists, skip CodeGraph
-   initialization; when absent, run exactly `codegraph init <project-root>`
-   once, with no second attempt in this bootstrap.
+   In the tool host, if `<tool-host>/.codegraph/` exists, skip CodeGraph
+   initialization; when absent, run exactly `codegraph init <tool-host>` once,
+   with no second attempt in this bootstrap. Never initialize CodeGraph in the
+   external planning store merely because that store is selected.
 8. If `codegraph init` is unavailable or exits non-zero, retain the exact
    command, exit code, and advisory warning, return status `done` when OpenSpec
    readiness is otherwise green, and continue with filesystem tools. CodeGraph
@@ -776,16 +792,16 @@ code, or change files except the permitted initialization or update below.
 
 | Worker | Use for | Official skills it may invoke |
 |---|---|---|
-| `openspec-planner` | explore an idea; create, continue, fast-forward, or revise change artifacts; sync specs; bulk archive | `openspec-explore`, `openspec-new-change`, `openspec-propose`, `openspec-continue-change`, `openspec-ff-change`, `openspec-update-change`, `openspec-sync-specs`, `openspec-bulk-archive-change` |
+| `openspec-planner` | explore an idea; create a complete change; continue a partially planned change through official CLI artifact instructions; revise existing artifacts; sync specs | `openspec-explore`, `openspec-propose`, `openspec-update-change`, `openspec-sync-specs`; no skill for the core artifact continuation protocol |
 | `openspec-implementer` | implement pending tasks, one bounded batch at a time | `openspec-apply-change` |
-| `openspec-verifier` | check the implementation against the artifacts and run the tests | `openspec-verify-change` |
+| `openspec-verifier` | check the implementation against the artifacts and run the tests | none; uses the official CLI plus the Angel verification protocol |
 
 ### Task prompt template
 
-Pass references, never artifact bodies:
+Pass references, never artifact bodies. Planner and implementer prompts use:
 
 ```
-Invoke the official skill <skill-name> for change <change-name>.
+Invoke the official core skill <skill-name> for change <change-name>.
 Brief: <confirmed interview brief — planner only>
 Constraints: <scope limits; for the implementer, the exact task batch>
 Return: the Shared corrected-failure result fields, plus the route-specific
@@ -793,6 +809,18 @@ next recommended action. For verification, also return verdict, task evidence,
 completion, conflicts, findings, and scenario coverage. Compact — no artifact
 contents.
 ```
+
+For a partially planned existing change, replace the first line with:
+
+```
+Execute the core artifact continuation protocol for change <change-name> using
+official OpenSpec status and artifact instructions; do not load a non-core
+continue skill.
+```
+
+The verifier prompt instead names the change and context and says to execute
+the Angel verification protocol; it MUST NOT name or request a non-core
+OpenSpec verification skill.
 
 Every OpenSpec worker prompt MUST state the bootstrap CodeGraph-ownership rule:
 the worker MUST NOT run `codegraph init`, and after a bootstrap warning it uses
@@ -825,14 +853,16 @@ incomplete planning report.
 ### Inline single-change archive
 
 Archiving one named change is bounded lifecycle control, not planned
-implementation. Whenever this workflow reaches "proceed to archive", the
-primary orchestrator MUST load and invoke `openspec-archive-change` itself —
-never dispatch `openspec-planner` or `general` solely for that — and owns every
-question the archive skill requires. If the user chooses to sync delta specs,
-delegate only that sync to `openspec-planner` with `openspec-sync-specs`
-(subject to the bootstrap gate), then resume the archive inline after a clean
-sync result. Bulk archive requests stay delegated to `openspec-planner` with
-`openspec-bulk-archive-change`.
+implementation. Whenever this workflow reaches "proceed to archive", first
+apply the bootstrap gate for the core `openspec-archive-change` skill, then the
+primary orchestrator MUST load and invoke that skill itself — never dispatch
+`openspec-planner` or `general` solely for that — and owns every question the
+archive skill requires. If the user chooses to sync delta specs, delegate only
+that sync to `openspec-planner` with `openspec-sync-specs` (subject to the
+bootstrap gate), then resume the archive inline after a clean sync result. A
+request to archive multiple changes is processed as repeated single-change
+core archive operations, sequentially and with the same authorization guard;
+never select or emulate a custom bulk-archive workflow.
 
 ### Planned-task implementation state
 
