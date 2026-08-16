@@ -20,11 +20,7 @@ angel-ai version               # shows the installed version without network acc
 angel-ai update                # forces an update check
 ```
 
-## Design comparison
-
-The comparison brings together tables and explanations covering agents,
-planning, memory, specs, token savings, final review, and MCPs across eight
-projects.
+## Harness Design comparison
 
 **[Read the full design comparison](docs/harness-comparison.md)**
 
@@ -49,17 +45,29 @@ existing configuration.
 | `~/.config/opencode/tui-plugins/*` | The selected [Angel AI TUI plugins](assets/tui-plugins/) are created or replaced. |
 | `~/.config/opencode/opencode.json` | The [MCP](assets/fragments/mcp.json), [permission](assets/fragments/permissions.json), and [settings](assets/fragments/settings.json) fragments are deep-merged into the existing configuration. Selected agent models, CodeGraph, and tsgo settings are also reconciled without removing unrelated keys. |
 
-The OpenSpec extra installs or updates only the official OpenSpec CLI. When an
-OpenSpec workflow is first used in a project, Angel AI runs
-`openspec init --tools opencode`; for an existing initialized project, it runs
-`openspec update`. OpenSpec owns the resulting project-local `.opencode/` files
-and generates them from its official `core` profile with both skills and
-commands. Angel AI does not ship copies of those skills or use custom OpenSpec
-workflow profiles. Final verification remains an Angel AI protocol driven by
-the official OpenSpec CLI because verification is not part of the core profile.
-When a registered store is selected, planning stays in that store while the
-official OpenCode integration is initialized or refreshed in the working
-project that must load it.
+## Extras
+
+The last wizard step offers standalone integrations and UI toggles. All of them
+are selected by default except cmux, which requires `cmux` on the PATH.
+
+- **[CodeGraph](https://github.com/colbymchenry/codegraph)** — installs the
+  CLI, registers the local MCP server, and appends its guidance to `AGENTS.md`.
+- **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** — installs or updates
+  the official OpenSpec CLI.
+- **[tsgo](https://github.com/microsoft/typescript-go)** — installs or updates
+  tsgo and configures it as the TypeScript LSP.
+- **[Angel AI logo](assets/tui-plugins/)** — custom ASCII logo plus MCP status
+  in the TUI footer.
+- **[one-dark-pro theme](assets/themes/one-dark-pro.json)** — sets one-dark-pro
+  as the TUI theme (`tui.json`).
+- **[Subagent statusline](https://github.com/Joaquinvesapa/sub-agent-statusline)**
+  — third-party npm plugin showing worker activity in the sidebar.
+- **[Open in App](https://github.com/Angel-M-R/opencode-open-in-app)** — npm
+  plugin that opens files and resources in their native applications.
+- **[OpenSpec task TUI](https://github.com/Angel-M-R/opencode-openspec-task-tui)**
+  — npm plugin showing OpenSpec task progress in the sidebar.
+- **[cmux](https://cmux.com)** — cmux notifications and Feed for OpenCode
+  sessions.
 
 ## Usage from the repository
 
