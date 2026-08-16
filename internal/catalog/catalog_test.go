@@ -10,31 +10,22 @@ import (
 	assetfs "angel-ai-opencode/internal/assets"
 )
 
-func TestLoadGroupsNestedOpenSpecSkills(t *testing.T) {
+func TestLoadDoesNotIncludeVendoredOpenSpecSkills(t *testing.T) {
 	assets := filepath.Join("..", "..", "assets")
 	categories, err := Load(assetfs.Directory(assets))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var openSpecItems []Item
 	for _, category := range categories {
 		if category.Name != "skills" {
 			continue
 		}
 		for _, item := range category.Items {
 			if item.Name == "openspec" || strings.HasPrefix(item.Name, "openspec-") {
-				openSpecItems = append(openSpecItems, item)
+				t.Fatalf("OpenSpec skill %q is vendored in the installer catalog", item.Name)
 			}
 		}
-	}
-	if len(openSpecItems) != 1 {
-		t.Fatalf("OpenSpec catalog items = %#v, want one grouped bundle", openSpecItems)
-	}
-	item := openSpecItems[0]
-	if item.Name != "openspec" || item.Source != "skills/openspec" ||
-		item.Dest != filepath.Join("skills", "openspec") || item.Kind != CopyDir {
-		t.Fatalf("OpenSpec catalog item = %#v, want nested CopyDir bundle", item)
 	}
 }
 

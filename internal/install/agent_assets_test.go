@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -251,46 +250,28 @@ func TestOrchestratorSupportsManualReviewWithSharedReviewerSelection(t *testing.
 	}
 }
 
-// Vendored OpenSpec skills remain complete and pinned to their generated
-// version.
-func TestVendoredOpenSpecAgentAssetsRemainPreserved(t *testing.T) {
-	skillsRoot := filepath.Join("..", "..", "assets", "skills", "openspec")
-	entries, err := os.ReadDir(skillsRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var names []string
-	for _, entry := range entries {
-		if entry.IsDir() && strings.HasPrefix(entry.Name(), "openspec-") {
-			names = append(names, entry.Name())
+func TestOpenSpecBootstrapDelegatesProjectIntegrationToOpenSpec(t *testing.T) {
+	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
+	normalized := strings.Join(strings.Fields(orchestrator), " ")
+	for _, required := range []string{
+		"openspec init --tools opencode",
+		"openspec update",
+		"current global OpenSpec profile, workflow, and delivery configuration",
+		"context-and-skill keys",
+		"<required-skill>/SKILL.md",
+	} {
+		if !strings.Contains(normalized, required) {
+			t.Errorf("OpenSpec bootstrap contract is missing %q", required)
 		}
 	}
-	sort.Strings(names)
-	want := []string{
-		"openspec-apply-change",
-		"openspec-archive-change",
-		"openspec-bulk-archive-change",
-		"openspec-continue-change",
-		"openspec-explore",
-		"openspec-ff-change",
-		"openspec-new-change",
-		"openspec-onboard",
-		"openspec-propose",
-		"openspec-sync-specs",
-		"openspec-update-change",
-		"openspec-verify-change",
-	}
-	if !reflect.DeepEqual(names, want) {
-		t.Fatalf("vendored OpenSpec skills = %v, want %v", names, want)
-	}
-	for _, name := range names {
-		content, err := os.ReadFile(filepath.Join(skillsRoot, name, "SKILL.md"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(string(content), "generatedBy: \"1.6.0\"") {
-			t.Errorf("%s lost its vendored generatedBy contract", name)
+	for _, forbidden := range []string{
+		"openspec init --tools none",
+		"metadata.generatedBy",
+		"~/.config/opencode/skills/openspec/",
+		"Never run `openspec update`",
+	} {
+		if strings.Contains(orchestrator, forbidden) {
+			t.Errorf("OpenSpec bootstrap retains obsolete contract %q", forbidden)
 		}
 	}
 }

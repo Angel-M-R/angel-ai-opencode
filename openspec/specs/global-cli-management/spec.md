@@ -14,22 +14,34 @@ The installer SHALL expose an `OpenSpec` extra that is preselected in the intera
 - **WHEN** the installer runs with `--all`
 - **THEN** its installation request includes the `OpenSpec` extra
 
-### Requirement: OpenSpec skills install as one nested bundle
-The repository SHALL retain all 12 vendored OpenSpec child skills under `assets/skills/openspec/<skill-name>/SKILL.md`. The installer catalog SHALL expose the top-level `openspec` directory as one selectable skill bundle, and installation SHALL recursively preserve every child path under `<config>/skills/openspec/` without removing, regenerating, or replacing individual skill definitions.
+#### Scenario: OpenSpec CLI is absent
+- **WHEN** OpenSpec is selected and no working `openspec` executable or selected-manager package registration exists
+- **THEN** the installer installs `@fission-ai/openspec@latest`
+
+#### Scenario: OpenSpec CLI is outdated
+- **WHEN** OpenSpec is selected and its executable reports a version older than the registry's latest version
+- **THEN** the installer updates it with `@fission-ai/openspec@latest`
+
+### Requirement: OpenSpec owns its project integration
+The repository MUST NOT vendor OpenSpec-generated skills or commands. Selecting the OpenSpec extra SHALL install or update only the official OpenSpec CLI. Project bootstrap SHALL delegate OpenCode skill and command generation to the installed CLI so the user's current global OpenSpec profile, workflow selection, and delivery mode determine the generated project-local files.
 
 #### Scenario: Wizard loads the skill catalog
-- **WHEN** the catalog scans the nested OpenSpec assets
-- **THEN** it exposes one selectable `openspec` item rather than 12 top-level OpenSpec skill items
+- **WHEN** the catalog scans the repository assets
+- **THEN** it exposes no `openspec` or `openspec-*` skill bundle copied by Angel AI
 
-#### Scenario: OpenSpec bundle is selected
-- **WHEN** the installer prepares the selected `openspec` skill bundle
-- **THEN** it recursively copies all 12 child skills to `<config>/skills/openspec/<skill-name>/SKILL.md` without local skill generation
+#### Scenario: OpenSpec extra is selected
+- **WHEN** the installer applies the OpenSpec extra
+- **THEN** it installs or updates `@fission-ai/openspec@latest` without writing OpenSpec skills or commands to the global OpenCode configuration
+
+#### Scenario: Project integration is generated
+- **WHEN** the OpenSpec bootstrap initializes or updates a local project
+- **THEN** the official CLI generates the OpenCode integration under that project according to the user's current global OpenSpec policy
 
 ### Requirement: Gentle AI global cleanup is manual, backed up, and evidence-based
 The installer MUST NOT detect, compare, back up, or remove legacy Gentle AI files. For this machine's one-time migration, cleanup SHALL use the Gentle AI source repository read-only as ownership evidence, create one timestamped backup of every item to be removed or edited before mutation, and limit deletion to the confirmed Gentle AI allowlist. The cleanup SHALL preserve the Angel-managed skill set and every file without ownership evidence, validate the resulting JSON configuration, prove retained skills remain byte-identical, and restart OpenCode only after validation succeeds.
 
 #### Scenario: Installer encounters legacy Gentle AI files
-- **WHEN** the installer writes the selected nested OpenSpec bundle to a destination that still contains legacy Gentle AI files
+- **WHEN** the installer writes selected Angel AI assets to a destination that still contains legacy Gentle AI files
 - **THEN** it leaves those legacy files untouched for the separate one-time cleanup
 
 #### Scenario: Cleanup backup is prepared
@@ -46,29 +58,29 @@ The installer MUST NOT detect, compare, back up, or remove legacy Gentle AI file
 
 #### Scenario: Retained installation is validated
 - **WHEN** cleanup has completed
-- **THEN** `opencode.json` parses successfully and `cognitive-doc-design`, `technical-grilling`, `investigate`, `product-grilling`, and all 12 nested OpenSpec skills match their pre-cleanup bytes
+- **THEN** `opencode.json` parses successfully and `cognitive-doc-design`, `technical-grilling`, `investigate`, and `product-grilling` match their pre-cleanup bytes
 
 #### Scenario: Cleanup validation succeeds
 - **WHEN** JSON and byte-identity checks pass
 - **THEN** OpenCode is restarted so the removed skills and agents are unloaded
 
-### Requirement: Selected global CLIs target latest
-For each selected CodeGraph or OpenSpec CLI, the installer SHALL use the selected package manager to inspect package registration, inspect any executable on `PATH`, and query the registry's `latest` version. It SHALL install the descriptor's `@latest` package only when the executable is absent, the selected manager does not register the package, and registry lookup is usable. A working executable SHALL NOT be installed, updated, downgraded, removed, or relinked, including when its installed version is older than or newer than the registry version.
+### Requirement: Selected CodeGraph CLI preserves a working executable
+For the selected CodeGraph CLI, the installer SHALL use the selected package manager to inspect package registration, inspect any executable on `PATH`, and query the registry's `latest` version. It SHALL install the descriptor's `@latest` package only when the executable is absent, the selected manager does not register the package, and registry lookup is usable. A working CodeGraph executable SHALL NOT be installed, updated, downgraded, removed, or relinked, including when its installed version is older than or newer than the registry version.
 
-#### Scenario: Selected CLI is absent and unregistered
-- **WHEN** a selected CLI executable is absent, the selected manager does not register its package, and the registry reports a parseable latest version
-- **THEN** the plan reports an installation action and application invokes the selected manager with that CLI's `@latest` package
+#### Scenario: Selected CodeGraph CLI is absent and unregistered
+- **WHEN** the CodeGraph executable is absent, the selected manager does not register its package, and the registry reports a parseable latest version
+- **THEN** the plan reports an installation action and application invokes the selected manager with the CodeGraph `@latest` package
 
-#### Scenario: Selected CLI is current
-- **WHEN** a selected CLI executable reports the same parseable version as the registry's latest version
+#### Scenario: Selected CodeGraph CLI is current
+- **WHEN** the CodeGraph executable reports the same parseable version as the registry's latest version
 - **THEN** planning and application report it as current without invoking a package installation command
 
-#### Scenario: Selected CLI is outdated
-- **WHEN** a selected CLI executable reports a parseable version older than the registry's latest version
+#### Scenario: Selected CodeGraph CLI is outdated
+- **WHEN** the CodeGraph executable reports a parseable version older than the registry's latest version
 - **THEN** planning and application report it as outdated and preserve it without invoking a package installation command
 
-#### Scenario: Selected CLI is ahead of the registry
-- **WHEN** a selected CLI executable reports a parseable version newer than the registry's latest version
+#### Scenario: Selected CodeGraph CLI is ahead of the registry
+- **WHEN** the CodeGraph executable reports a parseable version newer than the registry's latest version
 - **THEN** planning and application report it as ahead of the registry and preserve it without invoking a package installation command
 
 ### Requirement: Package manager selection is deterministic
@@ -92,7 +104,7 @@ The installer SHALL use npm when npm is available. It SHALL use pnpm only when n
 
 #### Scenario: Working executable is not registered by the selected manager
 - **WHEN** a selected CLI executable reports a parseable version but its package is not registered by the selected manager
-- **THEN** the installer preserves the executable and does not query the other manager or claim cross-manager ownership
+- **THEN** the installer does not query the other manager or claim cross-manager ownership, preserves the executable unless it is outdated OpenSpec, and updates outdated OpenSpec through the selected manager
 
 ### Requirement: OpenSpec enforces its Node.js floor before installation
 When OpenSpec is selected, planning and application SHALL require a parseable Node.js version greater than or equal to `20.19.0` before any selected CLI installation begins. Missing, malformed, or older Node.js versions SHALL fail preflight without package or configuration side effects.
@@ -125,10 +137,10 @@ When OpenSpec is selected, planning and application SHALL require a parseable No
 - **THEN** planning inspects every selected CLI before reporting any action that application could install
 
 ### Requirement: Application defers writes until all CLI actions succeed
-`ApplyInstallation` SHALL prepare and validate the full request, complete prevalidation for every selected CLI before installing any package, and process prevalidated records sequentially in deterministic descriptor order. It SHALL install only records classified as absent and installable, preserve healthy installed records, and write no configuration until every required installation succeeds and each installed executable reports a parseable version. If a later installation fails, successful earlier installations MAY remain as external side effects, but their results SHALL be reported and no prepared file SHALL be reconciled.
+`ApplyInstallation` SHALL prepare and validate the full request, complete prevalidation for every selected CLI before installing or updating any package, and process prevalidated records sequentially in deterministic descriptor order. It SHALL install records classified as absent and installable, update outdated OpenSpec records, preserve other healthy installed records, and write no configuration until every required package action succeeds and each resulting executable reports a parseable version. If a later package action fails, successful earlier actions MAY remain as external side effects, but their results SHALL be reported and no prepared file SHALL be reconciled.
 
 #### Scenario: All selected CLIs pass prevalidation
-- **WHEN** every selected CLI is either healthy or absent and installable, and every required installation succeeds with a parseable executable version
+- **WHEN** every selected CLI is healthy, absent and installable, or outdated OpenSpec, and every required package action succeeds with a parseable executable version
 - **THEN** application proceeds to a single repreparation followed by configuration reconciliation
 
 #### Scenario: Later CLI is invalid during prevalidation
@@ -144,14 +156,18 @@ When OpenSpec is selected, planning and application SHALL require a parseable No
 - **THEN** application fails before configuration writes and does not perform automatic cleanup
 
 #### Scenario: Installed CLI requires no package action
-- **WHEN** prevalidation classifies a selected CLI as current, outdated, ahead of the registry, or registry-unverified
+- **WHEN** prevalidation classifies a selected CLI as current, ahead of the registry, registry-unverified, or outdated CodeGraph
 - **THEN** application reports that classification without invoking an install command for that CLI
+
+#### Scenario: Installed OpenSpec CLI requires an update
+- **WHEN** prevalidation classifies OpenSpec as outdated
+- **THEN** application invokes the selected manager with `@fission-ai/openspec@latest` and verifies the resulting executable version before configuration writes
 
 ### Requirement: Application reprepares exactly once after CLI processing
 When at least one global CLI is selected and every CLI action succeeds, `ApplyInstallation` SHALL rerun full installation preparation exactly once before file reconciliation. It SHALL NOT reprepare after each individual CLI.
 
 #### Scenario: Two selected CLIs succeed
-- **WHEN** CodeGraph and OpenSpec updates both complete successfully
+- **WHEN** a required CodeGraph installation and OpenSpec update both complete successfully
 - **THEN** application performs one post-CLI repreparation before any file write
 
 #### Scenario: A selected CLI fails

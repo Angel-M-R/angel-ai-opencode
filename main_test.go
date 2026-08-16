@@ -457,8 +457,10 @@ func TestEmbeddedAndDirectoryAssetSourcesHaveParity(t *testing.T) {
 	if !reflect.DeepEqual(embeddedFiles, directoryFiles) {
 		t.Fatal("embedded assets differ from the repository assets directory")
 	}
-	if _, ok := embeddedFiles["skills/openspec/openspec-apply-change/SKILL.md"]; !ok {
-		t.Fatal("embedded assets are missing nested OpenSpec skill content")
+	for name := range embeddedFiles {
+		if strings.HasPrefix(name, "skills/openspec/") || strings.HasPrefix(name, "skills/openspec-") {
+			t.Fatalf("embedded assets include vendored OpenSpec skill %q", name)
+		}
 	}
 }
 

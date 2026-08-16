@@ -706,16 +706,18 @@ a parallel one.
 
 ### Bootstrap gate before OpenSpec workers
 
-Keep a session-only (never persisted) set of successfully bootstrapped context
-keys: `store:<id>` for an explicit registered store, or the resolved project
-root for a local project (retain that association for the session). Before
-dispatching `openspec-planner`, `openspec-implementer`, or `openspec-verifier`,
-skip bootstrap only when the exact context key is already in the set; a
-different project root or store MUST be bootstrapped. Otherwise dispatch one
-short `general` task with the prompt below (substituting the working directory
-and optional store id, adding no unrelated work). Add the returned key and
-dispatch the requested worker only when every blocking OpenSpec JSON readiness
-step succeeds and the result is otherwise clean under the shared
+Keep a session-only (never persisted) set of successfully bootstrapped
+context-and-skill keys: `store:<id>|skill:<skill-name>` for an explicit
+registered store, or `<resolved-project-root>|skill:<skill-name>` for a local
+project (retain that association for the session). Before dispatching
+`openspec-planner`, `openspec-implementer`, or `openspec-verifier`, skip
+bootstrap only when the exact context-and-skill key is already in the set; a
+different project root, store, or required skill MUST be bootstrapped.
+Otherwise dispatch one short `general` task with the prompt below (substituting
+the working directory, exact required skill, and optional store id, adding no
+unrelated work). Add the returned context-and-skill key and dispatch the
+requested worker only when every blocking OpenSpec JSON readiness step succeeds
+and the result is otherwise clean under the shared
 implementation-result policy; an unavailable or non-zero `codegraph init` is a
 retained advisory warning, excluded from that classification, and never blocks
 otherwise-green readiness. Any real readiness failure or other non-clean result
@@ -723,11 +725,11 @@ is a mandatory stop: retain and report its status, diagnostic, commands, and
 exit codes, then apply the shared mandatory-stop policy.
 
 ```text
-Run only an OpenSpec readiness bootstrap for <working-directory>. Return the
-Shared corrected-failure result fields supplied by the orchestrator, plus the
-resolved context key, advisory warnings, and the blocking reason if any. Do not
-delegate, inspect application code, or change files except the one permitted
-initialization below.
+Run only an OpenSpec readiness bootstrap for <working-directory> and official
+skill <required-skill>. Return the Shared corrected-failure result fields
+supplied by the orchestrator, plus the resolved context-and-skill key, advisory
+warnings, and the blocking reason if any. Do not delegate, inspect application
+code, or change files except the permitted initialization or update below.
 
 1. Treat OpenSpec JSON output as the only readiness source. For an explicit
    registered store <id>, run `openspec list --json --store <id>` and use
@@ -738,21 +740,33 @@ initialization below.
    this repository installer's `OpenSpec` extra.
 3. Never initialize for an explicit store. For a local context only, when the
    first list JSON has no resolvable root, run exactly
-   `openspec init --tools none`, then `openspec list --json` once more. If
+   `openspec init --tools opencode`, then `openspec list --json` once more. If
    initialization fails or the follow-up JSON still has no resolvable root,
-   block. Initialize at most once; this is the only permitted mutation.
-4. Run `openspec --version` and compare it with the child `metadata.generatedBy`
-   values in `~/.config/opencode/skills/openspec/<skill-name>/SKILL.md`. If they
-   differ, report an advisory warning but continue when readiness otherwise
-   succeeds. If local OpenSpec skills duplicate global skills, stay silent.
-5. Never run `openspec update`, change OpenSpec profile, workflow, or delivery
-   configuration, or generate local skills.
-6. Complete every blocking readiness step above before CodeGraph preparation.
+   block. Initialize at most once.
+4. When the first list JSON resolves an existing local root, run exactly
+   `openspec update` without `--force`, then recheck readiness with
+   `openspec list --json`. If update reports that no tools are configured, run
+   `openspec init --tools opencode` once to migrate a project previously
+   initialized with `--tools none`, then perform the JSON readiness recheck. A
+   failed update, migration init, or follow-up JSON check blocks worker launch.
+5. Let both init and update use the current global OpenSpec profile, workflow,
+   and delivery configuration. Never run `openspec config`, pass `--profile`,
+   or otherwise change that policy. OpenSpec owns the project-local skills and
+   commands it generates; never copy them from Angel AI assets.
+6. Before dispatch, verify that `<required-skill>/SKILL.md` exists under the
+   resolved project's `.opencode/skills/` directory for a local context, or
+   under `<working-directory>/.opencode/skills/` for an explicit store. If the
+   user's profile or delivery mode excludes it, or a store has no local
+   OpenCode integration providing it, block and tell the user to enable it with
+   `openspec config profile` and initialize the working project as needed; do
+   not alter the profile or initialize an unrelated project on the user's
+   behalf.
+7. Complete every blocking readiness step above before CodeGraph preparation.
    An explicit store without a local project root skips CodeGraph preparation.
    For a local root, if `<project-root>/.codegraph/` exists, skip CodeGraph
    initialization; when absent, run exactly `codegraph init <project-root>`
    once, with no second attempt in this bootstrap.
-7. If `codegraph init` is unavailable or exits non-zero, retain the exact
+8. If `codegraph init` is unavailable or exits non-zero, retain the exact
    command, exit code, and advisory warning, return status `done` when OpenSpec
    readiness is otherwise green, and continue with filesystem tools. CodeGraph
    preparation is advisory and never weakens blocking JSON readiness.

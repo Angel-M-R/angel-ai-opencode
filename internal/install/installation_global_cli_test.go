@@ -858,7 +858,7 @@ func TestApplyInstallationRejectsInvalidPostInstallVersionWithoutConfigurationWr
 	assertNoConfigurationWrites(t, target)
 }
 
-func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
+func TestOpenSpecSelectionIsCLIOnlyWithoutVendoredSkills(t *testing.T) {
 	foundExtra := false
 	for _, extra := range ExtraOptions {
 		if extra.Key == openSpecOptionKey && extra.Label == "OpenSpec" {
@@ -872,47 +872,6 @@ func TestOpenSpecSelectionIsCLIOnlyAndPreservesVendoredSkills(t *testing.T) {
 
 	assets := filepath.Join("..", "..", "assets")
 	assetSource := assetfs.Directory(assets)
-	categories, err := catalog.Load(assetSource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var openSpecSkills []string
-	for _, category := range categories {
-		if category.Name != "skills" {
-			continue
-		}
-		for _, item := range category.Items {
-			if item.Name != "openspec" {
-				continue
-			}
-			entries, err := assetSource.ReadDir(item.Source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, entry := range entries {
-				if entry.IsDir() && strings.HasPrefix(entry.Name(), "openspec-") {
-					openSpecSkills = append(openSpecSkills, entry.Name())
-				}
-			}
-		}
-	}
-	wantSkills := []string{
-		"openspec-apply-change",
-		"openspec-archive-change",
-		"openspec-bulk-archive-change",
-		"openspec-continue-change",
-		"openspec-explore",
-		"openspec-ff-change",
-		"openspec-new-change",
-		"openspec-onboard",
-		"openspec-propose",
-		"openspec-sync-specs",
-		"openspec-update-change",
-		"openspec-verify-change",
-	}
-	if !reflect.DeepEqual(openSpecSkills, wantSkills) {
-		t.Fatalf("vendored OpenSpec skills = %v, want %v", openSpecSkills, wantSkills)
-	}
 
 	target := t.TempDir()
 	opencodePath := filepath.Join(target, "opencode.json")
