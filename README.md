@@ -1,54 +1,55 @@
 
 ![Angel AI OpenCode interface](docs/images/angel-ai-opencode-interface.png)
 
-## Instalación
+## Installation
 
-La distribución inicial admite únicamente **macOS en Apple Silicon**
-(`Darwin/arm64`). No requiere Go ni clonar este repositorio. Instala la última
-versión estable con:
+The initial distribution supports **macOS on Apple Silicon** only
+(`Darwin/arm64`). It does not require Go or cloning this repository. Install the
+latest stable version with:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Angel-M-R/angel-ai-opencode/main/install.sh | /bin/sh
 ```
 
-El instalador verifica la descarga y coloca el ejecutable en
+The installer verifies the download and places the executable in
 `~/.local/bin/angel-ai`.
 
 ```sh
-angel-ai                       # abre el wizard interactivo
-angel-ai version               # muestra la versión instalada sin usar la red
-angel-ai update                # fuerza una comprobación de actualización
+angel-ai                       # opens the interactive wizard
+angel-ai version               # shows the installed version without network access
+angel-ai update                # forces an update check
 ```
 
-## Comparativa de diseño
+## Design comparison
 
-La comparativa reúne tablas y explicaciones sobre agentes, planificación,
-memoria, specs, ahorro de tokens, revisión final y MCPs de siete proyectos.
+The comparison brings together tables and explanations covering agents,
+planning, memory, specs, token savings, final review, and MCPs across eight
+projects.
 
-**[Leer la comparativa de diseño completa](docs/harness-comparison.md)**
+**[Read the full design comparison](docs/harness-comparison.md)**
 
-## Qué edita
+## What it edits
 
-Todo el contenido vive en `assets/` y se edita a mano — el código Go no hay
-que tocarlo para cambiar contenido. Esto es lo que se escribe en la máquina
-destino, agrupado por dónde acaba:
+All content lives in `assets/` and is edited by hand—the Go code does not need
+to be changed to update content. The following is written to the target machine,
+grouped by destination:
 
-| Se instala en | Qué es |
+| Installed in | What it is |
 |---|---|
-| `~/.config/opencode/agents/` | Agentes (un archivo por agente: frontmatter YAML + system prompt) |
-| `~/.config/opencode/commands/` | Comandos slash (destino soportado; hoy no se envía ninguno) |
-| `~/.config/opencode/skills/` | Skills (conserva archivos extra del destino) |
-| `~/.config/opencode/plugins/` | Plugins JS/TS (hoy solo los de cmux, si se selecciona la integración) |
-| `~/.config/opencode/themes/` | Temas |
-| `~/.config/opencode/tui-plugins/` | Plugins de la TUI (logo, etc.), activados vía los 3 toggles del paso final del wizard |
-| `~/.config/opencode/AGENTS.md` | Reglas globales de comportamiento (+ reglas de CodeGraph si se selecciona) |
-| `~/.config/opencode/opencode.json` | MCP, permisos y ajustes que se mergean sobre el existente (+ config de CodeGraph si se selecciona) |
+| `~/.config/opencode/agents/` | Agents (one file per agent: YAML frontmatter + system prompt) |
+| `~/.config/opencode/commands/` | Slash commands (supported destination; none are currently shipped) |
+| `~/.config/opencode/skills/` | Skills (preserves extra files at the destination) |
+| `~/.config/opencode/plugins/` | JS/TS plugins (currently only cmux plugins, if the integration is selected) |
+| `~/.config/opencode/themes/` | Themes |
+| `~/.config/opencode/tui-plugins/` | TUI plugins (logo, etc.), enabled through the three toggles in the wizard's final step |
+| `~/.config/opencode/AGENTS.md` | Global behavior rules (+ CodeGraph rules if selected) |
+| `~/.config/opencode/opencode.json` | MCPs, permissions, and settings merged into the existing file (+ CodeGraph configuration if selected) |
 
-## Uso desde el repositorio
+## Usage from the repository
 
 ```sh
-go run .                  # abre el wizard
-go run . --all            # instala todo sin TUI
-go run . --all --dry-run  # muestra el plan sin tocar nada
-go run . --target /ruta   # instalar en otro directorio (para probar)
+go run .                  # opens the wizard
+go run . --all            # installs everything without the TUI
+go run . --all --dry-run  # shows the plan without changing anything
+go run . --target /path   # installs in another directory (for testing)
 ```

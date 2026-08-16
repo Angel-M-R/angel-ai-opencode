@@ -1,99 +1,102 @@
-# Comparativa de diseño
+# Design comparison
 
-[Volver al README](../README.md)
+[Back to the README](../README.md)
 
-Existen muchos harnesses y metodologías para agentes de código. Comparo estos
-siete porque cubren enfoques que me interesan, aunque no todos posean las mismas
-capas: Superpowers, por ejemplo, hereda varias capacidades del harness. No es un
-benchmark ni pretende declarar un ganador; resume diferencias de diseño.
+There are many harnesses and methodologies for coding agents. I compare these
+eight because they cover approaches that interest me, although they do not all
+cover the same layers themselves: Superpowers, for example, inherits several
+capabilities from the harness. This is not a benchmark and does not attempt to
+declare a winner; it summarizes design differences.
 
-| [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) | [Angel AI](https://github.com/Angel-M-R/angel-ai-opencode) | [Oh My Pi](https://github.com/can1357/oh-my-pi) | [gstack](https://github.com/garrytan/gstack) | [ECC](https://github.com/affaan-m/ECC) | [Superpowers](https://github.com/obra/superpowers) | [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| <img src="images/gentle-ai-logo.png" width="56" alt="Logo de Gentle AI"> | <img src="images/angel-ai-badge.svg" width="56" alt="Logo AAI de Angel AI"> | <img src="images/oh-my-pi-icon.svg" width="56" alt="Icono de Oh My Pi"> | <img src="images/gstack-badge.svg" width="56" alt="Badge de gstack"> | <img src="images/ecc-logo.png" width="56" alt="Logo de ECC"> | <img src="images/superpowers-badge.svg" width="56" alt="Badge de Superpowers"> | <img src="images/bmad-method-badge.svg" width="56" alt="Badge de BMAD Method"> |
+| [Angel AI](https://github.com/Angel-M-R/angel-ai-opencode) | [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) | [Oh My Pi](https://github.com/can1357/oh-my-pi) | [gstack](https://github.com/garrytan/gstack) | [ECC](https://github.com/affaan-m/ECC) | [Superpowers](https://github.com/obra/superpowers) | [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) | [Oh My OpenAgent](https://github.com/code-yeongyu/oh-my-openagent) |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| <img src="images/angel-ai-badge.svg" width="56" alt="Angel AI AAI logo"> | <img src="images/gentle-ai-logo.png" width="56" alt="Gentle AI logo"> | <img src="images/oh-my-pi-icon.svg" width="56" alt="Oh My Pi icon"> | <img src="images/gstack-badge.svg" width="56" alt="gstack badge"> | <img src="images/ecc-logo.png" width="56" alt="ECC logo"> | <img src="images/superpowers-badge.svg" width="56" alt="Superpowers badge"> | <img src="images/bmad-method-badge.svg" width="56" alt="BMAD Method badge"> | <img src="https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/.github/assets/omo-icon-light.svg" width="56" alt="Oh My OpenAgent icon"> |
 
-## Agentes
+## Agents
 
-| Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
-|---|---|---|---|---|---|---|
-| 18 subagentes fijos + 1 orquestador | 6 subagentes fijos + 1 orquestador | 6 agentes fijos + `advisor` | 23 especialistas como skills/roles; sin roster fijo | 67 subagentes fijos + comandos multiagente | Subagentes dinámicos del harness; sin roster propio | 6 agentes documentados (12+ según su README); Party Mode combina personas |
+| Angel AI | Gentle AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method | Oh My OpenAgent |
+|---|---|---|---|---|---|---|---|
+| 6 fixed subagents + 1 orchestrator | 18 fixed subagents + 1 orchestrator | 6 fixed agents + `advisor` | 23 specialists as skills/roles; no fixed roster | 67 fixed subagents + multi-agent commands | Dynamic harness subagents; no owned roster | 6 documented agents (12+ according to its README); Party Mode combines personas | [11 Ultimate agents](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#agents); [optional Team Mode: lead + up to 8 members](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#team-mode-experimental-off-by-default) |
 
-En mi experiencia actual, los modelos más capaces, una buena compactación y el
-mejor aprovechamiento del contexto reducen la necesidad de dividir el trabajo
-entre muchos agentes. También importa qué se cuenta: un agente fijo, un rol
-dinámico y una persona interna de una skill tienen costes de coordinación
-distintos.
+In my current experience, more capable models, good compaction, and better use
+of context reduce the need to divide work among many agents. What is being
+counted also matters: a fixed agent, a dynamic role, and a persona embedded in a
+skill have different coordination costs.
 
-## Planificación y entrevistas
+## Planning and interviews
 
-| Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
-|---|---|---|---|---|---|---|
-| Sin entrevista integrada | Entrevista opcional, técnica y/o de producto | Sin entrevista integrada | `/office-hours` + revisiones de plan con `/autoplan` | `/plan` y multiplan; sin entrevista integrada evidenciada | Brainstorming socrático obligatorio antes del plan | Brainstorming y PRD guiados; profundidad adaptable |
+| Angel AI | Gentle AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method | Oh My OpenAgent |
+|---|---|---|---|---|---|---|---|
+| Optional technical and/or product interview | No built-in interview | No built-in interview | `/office-hours` + plan reviews with `/autoplan` | `/plan` and multi-plan; no built-in interview evidenced | Mandatory Socratic brainstorming before planning | Guided brainstorming and PRDs; adaptable depth | [Prometheus interview with optional dual review](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/guide/orchestration.md#planning-prometheus--metis--momus--oracle); [optional `/hyperplan`](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#commands) |
 
-Hoy prefiero poder entrevistar antes de planificar cuando el problema todavía
-está borroso, sin imponer ese paso a tareas directas. Angel AI toma ideas de
-[`grill-me`](https://github.com/mattpocock/skills) y
-[`gstack`](https://github.com/garrytan/gstack) para cuestionar requisitos de
-producto y decisiones técnicas antes de escribir el plan. gstack y BMAD también
-facilitan esa exploración; Superpowers la convierte en parte obligatoria de su
-metodología, mientras ECC se centra en planificar y orquestar.
+I currently prefer having the option to interview before planning when the
+problem is still unclear, without imposing that step on straightforward tasks.
+Angel AI draws ideas from
+[`grill-me`](https://github.com/mattpocock/skills) and
+[`gstack`](https://github.com/garrytan/gstack) to challenge product requirements
+and technical decisions before writing the plan. gstack, BMAD, and Oh My
+OpenAgent's Prometheus also facilitate this exploration; Superpowers makes it a
+mandatory part of its methodology, while ECC focuses on planning and
+orchestration.
 
-## Memoria
+## Memory
 
-| Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
-|---|---|---|---|---|---|---|
-| Engram: memoria semántica | Sin memoria integrada | Hindsight: memoria semántica | `/learn`: patrones; GBrain semántico opcional | Estado persistente de sesiones, skills aprendidas y métricas | Documentos de diseño/plan; memoria heredada del harness | `.memlog.md` + `project-context.md`; no semántica |
+| Angel AI | Gentle AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method | Oh My OpenAgent |
+|---|---|---|---|---|---|---|---|
+| No built-in memory | Engram: semantic memory | Hindsight: semantic memory | `/learn`: patterns; optional GBrain semantic memory | Persistent session state, learned skills, and metrics | Design/plan documents; memory inherited from the harness | `.memlog.md` + `project-context.md`; not semantic memory | [Git-backed per-agent memory with reflection and search; on by default](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/configuration.md#memory) |
 
-Sigo probando alternativas. No equiparo búsqueda semántica, estado persistente y
-documentos: resuelven problemas distintos. En cualquier caso, si el contexto
-conservado es pobre, incompleto o caduco, puede desviar al agente y resultar peor
-que no tener memoria.
+I am still testing alternatives. I do not consider semantic search, persistent
+state, and documents equivalent: they solve different problems. In any case, if
+the retained context is poor, incomplete, or stale, it can mislead the agent and
+be worse than having no memory.
 
 ## Specs
 
-| Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
-|---|---|---|---|---|---|---|
-| SDD propio con Engram, OpenSpec o ambos | OpenSpec oficial | Sistema propio | `/spec`: 5 fases, quality gate y archivo | Planes y guías; sin ciclo de specs dedicado | Diseño aprobado + plan de implementación detallado | PRD, arquitectura, stories, readiness y validación |
+| Angel AI | Gentle AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method | Oh My OpenAgent |
+|---|---|---|---|---|---|---|---|
+| Official OpenSpec | Custom SDD with Engram, OpenSpec, or both | Custom system | `/spec`: 5 phases, quality gate, and archive | Plans and guides; no dedicated spec lifecycle | Approved design + detailed implementation plan | PRD, architecture, stories, readiness, and validation | [Interviewed Markdown plans in `.omo/plans` + boulder-tracked execution](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/guide/orchestration.md#start-work-behavior-and-session-continuity) |
 https://github.com/scion-frontiers/farmtable
-Llevo tiempo trabajando con specs y mi criterio actual es dividir PRDs, ADRs y
-features en tareas pequeñas y verificables. Elijo OpenSpec para el flujo
-estructurado, aunque skills como
+I have been working with specs for some time, and my current approach is to split
+PRDs, ADRs, and features into small, verifiable tasks. I choose OpenSpec for the
+structured workflow, although skills such as
 [`/prototype`](https://github.com/mattpocock/skills/tree/main/skills/engineering/prototype)
-o [`/to-spec`](https://github.com/mattpocock/skills/tree/main/skills/engineering/to-spec)
-pueden producir una spec Markdown directa cuando basta con algo más ligero.
+or [`/to-spec`](https://github.com/mattpocock/skills/tree/main/skills/engineering/to-spec)
+can produce a direct Markdown spec when something lighter is sufficient.
 
-## Ahorro de tokens y modelos
+## Token savings and models
 
-| Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
-|---|---|---|---|---|---|---|
-| Sin optimizador específico | Sin optimizador específico | Hashline: −61 % de tokens de salida con Grok 4 Fast | Routing en navegador + benchmark de tokens/coste; sin ahorro general declarado | Routing, compactación estratégica y skills de coste; sin porcentaje general | Heredado del harness; no aplica a la metodología | Web bundles con suscripción plana; sin optimizador dinámico evidenciado |
+| Angel AI | Gentle AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method | Oh My OpenAgent |
+|---|---|---|---|---|---|---|---|
+| No specific optimizer | No specific optimizer | Hashline: 61% fewer output tokens with Grok 4 Fast | Browser routing + token/cost benchmark; no general savings claim | Routing, strategic compaction, and cost-aware skills; no general percentage | Inherited from the harness; not applicable to the methodology | Web bundles with flat-rate subscriptions; no evidenced dynamic optimizer | [Category/model routing](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#category-system), [preemptive compaction, and output truncation](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#truncation--context-management); no general percentage |
 
-Valoro reducir reintentos y resultados inútiles, pero soy escéptico ante los
-ahorradores que prometen recortes drásticos simplemente delegando en un modelo
-más barato: gastar menos tokens no compensa perder precisión o repetir trabajo.
-Routing, compactación, presupuestos y porcentajes medidos son mecanismos
-distintos y conviene presentarlos como tales.
+I value reducing retries and useless results, but I am skeptical of optimizers
+that promise drastic cuts simply by delegating to a cheaper model: spending
+fewer tokens does not make up for lost accuracy or repeated work. Routing,
+compaction, budgets, and measured percentages are different mechanisms and
+should be presented as such.
 
-## Review final
+## Final review
 
-| Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
-|---|---|---|---|---|---|---|
-| Obligatoria; 1 lente o 4R según el riesgo | Opcional; hasta 3 revisores elegidos | Opcional; entre 1 y 16 revisores según el cambio | `/review`, QA y `/ship`; `/codex` opcional | Review y quality gates disponibles; no gate final universal | Dos reviews por tarea + verificación de rama | Review adversarial en capas; no invocación universal |
+| Angel AI | Gentle AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method | Oh My OpenAgent |
+|---|---|---|---|---|---|---|---|
+| Optional; up to 3 selected reviewers | Mandatory; 1 lens or 4R depending on risk | Optional; between 1 and 16 reviewers depending on the change | `/review`, QA, and `/ship`; optional `/codex` | Review and quality gates available; no universal final gate | Two reviews per task + branch verification | Layered adversarial review; no universal invocation | [`review-work`: 5 parallel lenses; required before PR handoff or on explicit request](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/packages/shared-skills/skills/review-work/SKILL.md#review-work---5-agent-parallel-review-orchestrator) |
 
-Mi preferencia actual es que la revisión sea proporcional al riesgo. Gentle AI
-la convierte en una puerta obligatoria y reserva sus cuatro revisores 4R para
-cambios sensibles o grandes; Angel AI deja elegir hasta tres perspectivas; Oh
-My Pi ajusta automáticamente el paralelismo de `/review` al tamaño del diff.
-gstack encadena varias comprobaciones de cierre, ECC y BMAD las ofrecen como
-flujos invocables y Superpowers integra revisión por tarea en su método.
+My current preference is for review to be proportional to risk. Gentle AI makes
+it a mandatory gate and reserves its four 4R reviewers for sensitive or large
+changes; Angel AI lets users choose up to three perspectives; Oh My Pi
+automatically adjusts `/review` parallelism to the size of the diff. Oh My
+OpenAgent runs five parallel lenses before PR handoff or when explicitly
+requested. gstack chains several closing checks, ECC and BMAD offer them as
+invocable workflows, and Superpowers integrates per-task review into its
+method.
 
 ## MCPs
 
-| Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
-|---|---|---|---|---|---|---|
-| 3 incluidos | 2 incluidos | Sin MCPs propios; descubre los del disco | GBrain opcional; sin suite fija | Configuraciones de ejemplo; sin conteo fijo | Heredados del harness; no aplica | No incluye MCPs |
+| Angel AI | Gentle AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method | Oh My OpenAgent |
+|---|---|---|---|---|---|---|---|
+| 2 included | 3 included | No MCPs of its own; discovers them from disk | Optional GBrain; no fixed suite | Example configurations; no fixed count | Inherited from the harness; not applicable | Does not include MCPs | [5 built-in + `.mcp.json` and skill-embedded tiers](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#mcps) |
 
-Para mí, el número de MCPs no mide por sí solo la calidad del harness. Prefiero
-un conjunto pequeño y deliberado: cada servidor debe aportar una capacidad útil
-sin inflar el catálogo de herramientas ni distraer al modelo. Que una metodología
-portable herede los MCPs del harness es un límite de responsabilidad, no una
-carencia.
+For me, the number of MCPs does not measure harness quality on its own. I prefer
+a small, deliberate set: each server should provide a useful capability without
+inflating the tool catalog or distracting the model. A portable methodology
+inheriting MCPs from the harness is a responsibility boundary, not a shortcoming.
