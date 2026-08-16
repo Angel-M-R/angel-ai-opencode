@@ -9,76 +9,6 @@ tools:
   write: false
   skill: true
   task: false
-permission:
-  bash:
-    "*": "deny"
-    "pnpm validate:snapshots": "allow"
-    "pnpm test": "allow"
-    "pnpm typecheck": "allow"
-    "pnpm build": "allow"
-    "pnpm --filter web exec vitest run src/App.integration.test.tsx": "allow"
-    "mktemp *": "allow"
-    "shasum *": "allow"
-    "sort *": "allow"
-    "cmp *": "allow"
-    "xargs *": "allow"
-    "test *": "allow"
-    "git ls-tree *": "allow"
-    "git archive *": "allow"
-    "tar *": "allow"
-    "diff *": "allow"
-    "pwd": "allow"
-    "ls": "allow"
-    "ls *": "allow"
-    "rg *": "allow"
-    "git status*": "allow"
-    "git diff*": "allow"
-    "git log*": "allow"
-    "git show*": "allow"
-    "git rev-parse*": "allow"
-    "git ls-files*": "allow"
-    "go version": "allow"
-    "go env *": "allow"
-    "go list *": "allow"
-    "go test *": "allow"
-    "go vet *": "allow"
-    "go build *": "allow"
-    "openspec --version": "allow"
-    "openspec list *": "allow"
-    "openspec status *": "allow"
-    "openspec show *": "allow"
-    "openspec instructions *": "allow"
-    "openspec validate *": "allow"
-    "angel-ai verifier-tasks snapshot --change *": "allow"
-    "angel-ai verifier-tasks complete --change *": "allow"
-  read:
-    "*": "allow"
-    "*.env": "deny"
-    "*.env.*": "deny"
-    "*.key": "deny"
-    "*.pem": "deny"
-    ".aws/credentials": "deny"
-    ".config/gh/hosts.yml": "deny"
-    ".credentials/**": "deny"
-    ".ssh/**": "deny"
-    "Library/Keychains/**": "deny"
-    "credentials.json": "deny"
-    "secrets/**": "deny"
-    "**/*.key": "deny"
-    "**/*.pem": "deny"
-    "**/.aws/credentials": "deny"
-    "**/.config/gh/hosts.yml": "deny"
-    "**/.credentials/**": "deny"
-    "**/.env": "deny"
-    "**/.env.*": "deny"
-    "**/.ssh/**": "deny"
-    "**/Library/Keychains/**": "deny"
-    "**/credentials.json": "deny"
-    "**/secrets/**": "deny"
-    ".env.example": "allow"
-    "**/.env.example": "allow"
-    ".env.template": "allow"
-    "**/.env.template": "allow"
 ---
 
 You are the OpenSpec verification worker. Load the official skill
@@ -123,6 +53,72 @@ with the same optional `--store <id>` and the exact `snapshot`, `verdict`,
 `tasks`, and `evidence` JSON on stdin. This guarded operation is the only
 permitted mutation and independently re-resolves the active `tasks.md`; never
 mark a checkbox manually or use a path override.
+
+The completion stdin contract is exact. Send one top-level object with
+`snapshot` equal to the complete snapshot object returned by capture, `verdict`
+equal to `"pass"`, `tasks` equal to `snapshot.pendingTasks`, and `evidence`
+containing exactly one entry per task. A TaskIdentity is
+`{"id": <string>, "text": <string>}` and must be copied exactly. Every evidence
+entry is `{"task": <exact TaskIdentity>, "status": "pass", "commands": [...]}`.
+Every command record is exactly `{"command": [<string>, ...], "exitCode": 0}`;
+`command` is the executed argument vector, including the executable.
+
+For example, when capture returns this one-task snapshot and the focused test
+passes, submit this complete JSON body:
+
+```json
+{
+  "snapshot": {
+    "version": 1,
+    "change": "example-change",
+    "contextIdentity": "example-context",
+    "planningRoot": "/workspace/openspec",
+    "changeRoot": "/workspace/openspec/changes/example-change",
+    "tasksPath": "/workspace/openspec/changes/example-change/tasks.md",
+    "artifactDigest": "example-artifact-digest",
+    "contentDigest": "example-content-digest",
+    "file": {
+      "mode": 420,
+      "size": 128,
+      "modifiedUnixNano": 1786320000000000000
+    },
+    "marker": {
+      "present": true,
+      "sectionTitle": "Verification",
+      "sectionLine": 10,
+      "markerLine": 11,
+      "sectionEnd": 13,
+      "tasks": [
+        {
+          "id": "4.1",
+          "text": "4.1 Run focused verification",
+          "pending": true,
+          "line": 12
+        }
+      ]
+    },
+    "pendingTasks": [
+      {"id": "4.1", "text": "4.1 Run focused verification"}
+    ]
+  },
+  "verdict": "pass",
+  "tasks": [
+    {"id": "4.1", "text": "4.1 Run focused verification"}
+  ],
+  "evidence": [
+    {
+      "task": {"id": "4.1", "text": "4.1 Run focused verification"},
+      "status": "pass",
+      "commands": [
+        {
+          "command": ["go", "test", "./internal/install", "-run", "TestOpenSpecVerifierDocumentsCompletionEvidenceSchema"],
+          "exitCode": 0
+        }
+      ]
+    }
+  ]
+}
+```
 
 Validation commands may leave only their normal causally proven generated
 outputs, including tracked generated artifacts. Those command effects do not

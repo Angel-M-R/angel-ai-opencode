@@ -53,7 +53,7 @@ que no tener memoria.
 | Gentle AI | Angel AI | Oh My Pi | gstack | ECC | Superpowers | BMAD Method |
 |---|---|---|---|---|---|---|
 | SDD propio con Engram, OpenSpec o ambos | OpenSpec oficial | Sistema propio | `/spec`: 5 fases, quality gate y archivo | Planes y guías; sin ciclo de specs dedicado | Diseño aprobado + plan de implementación detallado | PRD, arquitectura, stories, readiness y validación |
-
+https://github.com/scion-frontiers/farmtable
 Llevo tiempo trabajando con specs y mi criterio actual es dividir PRDs, ADRs y
 features en tareas pequeñas y verificables. Elijo OpenSpec para el flujo
 estructurado, aunque skills como

@@ -8,42 +8,6 @@ tools:
   read: true
   write: false
   task: false
-permission:
-  bash:
-    "*": "allow"
-    "git add*": "deny"
-    "git commit*": "deny"
-    "git push*": "deny"
-  edit: "deny"
-  write: "deny"
-  read:
-    "*": "allow"
-    "*.env": "deny"
-    "*.env.*": "deny"
-    "*.key": "deny"
-    "*.pem": "deny"
-    ".aws/credentials": "deny"
-    ".config/gh/hosts.yml": "deny"
-    ".credentials/**": "deny"
-    ".ssh/**": "deny"
-    "Library/Keychains/**": "deny"
-    "credentials.json": "deny"
-    "secrets/**": "deny"
-    "**/*.key": "deny"
-    "**/*.pem": "deny"
-    "**/.aws/credentials": "deny"
-    "**/.config/gh/hosts.yml": "deny"
-    "**/.credentials/**": "deny"
-    "**/.env": "deny"
-    "**/.env.*": "deny"
-    "**/.ssh/**": "deny"
-    "**/Library/Keychains/**": "deny"
-    "**/credentials.json": "deny"
-    "**/secrets/**": "deny"
-    ".env.example": "allow"
-    "**/.env.example": "allow"
-    ".env.template": "allow"
-    "**/.env.template": "allow"
 ---
 
 You are a read-only simplicity reviewer. Find code that works but carries more

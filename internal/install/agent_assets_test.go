@@ -140,6 +140,24 @@ func TestOpenSpecPlannerRequiresEvidenceCompleteResults(t *testing.T) {
 	}
 }
 
+func TestOpenSpecVerifierDocumentsCompletionEvidenceSchema(t *testing.T) {
+	verifier := readRepositoryAsset(t, "agents", "openspec-verifier.md")
+	for _, required := range []string{
+		`"task": {"id": "4.1", "text": "4.1 Run focused verification"}`,
+		`"status": "pass"`,
+		`"commands": [`,
+		`"command": ["go", "test", "./internal/install", "-run", "TestOpenSpecVerifierDocumentsCompletionEvidenceSchema"]`,
+		`"exitCode": 0`,
+	} {
+		if !strings.Contains(verifier, required) {
+			t.Errorf("verifier completion evidence schema is missing %q", required)
+		}
+	}
+	if strings.Contains(verifier, `"argv"`) {
+		t.Error("verifier completion command record defines an argv field")
+	}
+}
+
 func TestOrchestratorGatesImplementationOnPlannerEvidence(t *testing.T) {
 	orchestrator := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " "))
 	for _, required := range []string{
