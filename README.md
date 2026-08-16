@@ -39,14 +39,15 @@ existing configuration.
 
 | File modified | What it is |
 |---|---|
+| **Agents config** | |
 | `~/.config/opencode/agents/*.md` | Selected [agent definitions](assets/agents/) are created or replaced. Each file contains YAML frontmatter and a system prompt. |
 | `~/.config/opencode/skills/<skill>/**` | Selected [skills](assets/skills/) are updated recursively. Additional files already present in the destination are preserved. |
+| `~/.config/opencode/AGENTS.md` | The existing file is fully replaced with the [global Angel AI rules](assets/agents-md/AGENTS.md), plus the [CodeGraph guidance](assets/integrations/codegraph/AGENTS.md) when selected. |
+| **TUI config** | |
 | `~/.config/opencode/plugins/cmux-*.js` | The [cmux session and feed plugins](assets/integrations/cmux/) are created or replaced when the cmux integration is selected. |
 | `~/.config/opencode/themes/*.json` | Selected [themes](assets/themes/) are created or replaced. |
 | `~/.config/opencode/tui-plugins/*` | The selected [Angel AI TUI plugins](assets/tui-plugins/) are created or replaced. |
-| `~/.config/opencode/AGENTS.md` | The existing file is fully replaced with the [global Angel AI rules](assets/agents-md/AGENTS.md), plus the [CodeGraph guidance](assets/integrations/codegraph/AGENTS.md) when selected. |
 | `~/.config/opencode/opencode.json` | The [MCP](assets/fragments/mcp.json), [permission](assets/fragments/permissions.json), and [settings](assets/fragments/settings.json) fragments are deep-merged into the existing configuration. Selected agent models, CodeGraph, and tsgo settings are also reconciled without removing unrelated keys. |
-| `~/.config/opencode/tui.json` | Theme and plugin selections are merged into the existing TUI configuration, including the [one-dark-pro theme](assets/themes/one-dark-pro.json) and selected [TUI plugins](assets/tui-plugins/), without removing unrelated keys. |
 
 The OpenSpec extra installs or updates only the official OpenSpec CLI. When an
 OpenSpec workflow is first used in a project, Angel AI runs
