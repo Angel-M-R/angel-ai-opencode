@@ -3,9 +3,12 @@ package install
 import (
 	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
+	"angel-ai-opencode/internal/verifiertasks"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -120,249 +123,133 @@ func TestAgentFrontmatterRemainsStructurallySafe(t *testing.T) {
 	}
 }
 
-func TestOpenSpecPlannerRequiresEvidenceCompleteResults(t *testing.T) {
-	planner := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "openspec-planner.md")), " "))
-	for _, required := range []string{
-		"audit the complete tool transcript",
-		"files touched",
-		"every command executed in exact order",
-		"failed command and exit code",
-		"diagnosed cause",
-		"bounded correction",
-		"equivalent-or-broader",
-		"evidence that the successful validation covers",
-		"same worker in the same bounded invocation",
-		"final relevant validation state",
-		"evidence gap",
-		"do not report `done` or recommend implementation",
-	} {
-		if !strings.Contains(planner, required) {
-			t.Errorf("planner result contract is missing %q", required)
+// fencedBlocks returns the contents of every fenced code block in the
+// document that is tagged with the given language.
+func fencedBlocks(document, language string) []string {
+	var blocks []string
+	var current []string
+	inBlock := false
+	for _, line := range strings.Split(document, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if inBlock {
+			if trimmed == "```" {
+				blocks = append(blocks, strings.Join(current, "\n"))
+				current = nil
+				inBlock = false
+				continue
+			}
+			current = append(current, line)
+			continue
+		}
+		if trimmed == "```"+language {
+			inBlock = true
 		}
 	}
-	if strings.Contains(planner, "return a compact result: status (done|blocked|partial)") {
-		t.Error("planner still has the incomplete compact-only result contract")
-	}
+	return blocks
 }
 
-func TestOpenSpecVerifierDocumentsCompletionEvidenceSchema(t *testing.T) {
-	verifier := readRepositoryAsset(t, "agents", "openspec-verifier.md")
-	for _, required := range []string{
-		`"task": {"id": "4.1", "text": "4.1 Run focused verification"}`,
-		`"status": "pass"`,
-		`"commands": [`,
-		`"command": ["go", "test", "./internal/install", "-run", "TestOpenSpecVerifierDocumentsCompletionEvidenceSchema"]`,
-		`"exitCode": 0`,
-	} {
-		if !strings.Contains(verifier, required) {
-			t.Errorf("verifier completion evidence schema is missing %q", required)
+// The completion example embedded in the verifier prompt is the payload the
+// agent copies at runtime, so it must stay a valid CompleteRequest for the
+// real verifier-tasks service. Decoding it strictly against the Go types
+// catches schema drift (renamed or removed fields, stray extras like a
+// legacy "argv") without pinning any prompt prose.
+func TestOpenSpecVerifierCompletionExampleMatchesServiceSchema(t *testing.T) {
+	asset := readRepositoryAsset(t, "agents", "openspec-verifier.md")
+	blocks := fencedBlocks(asset, "json")
+	if len(blocks) == 0 {
+		t.Fatal("verifier prompt no longer embeds a JSON completion example")
+	}
+	for index, block := range blocks {
+		decoder := json.NewDecoder(strings.NewReader(block))
+		decoder.DisallowUnknownFields()
+		var request verifiertasks.CompleteRequest
+		if err := decoder.Decode(&request); err != nil {
+			t.Fatalf("example %d does not decode as a CompleteRequest: %v", index, err)
 		}
-	}
-	if strings.Contains(verifier, `"argv"`) {
-		t.Error("verifier completion command record defines an argv field")
-	}
-}
-
-func TestOrchestratorGatesImplementationOnPlannerEvidence(t *testing.T) {
-	orchestrator := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " "))
-	for _, required := range []string{
-		"### Planner result gate",
-		"the planner owns the detailed evidence report; the orchestrator owns the gate",
-		"artifacts exist is not sufficient",
-		"clean under the shared corrected-failure result fields",
-		"treat the result as an evidence gap",
-		"never dispatch an implementer from an incomplete planning report",
-	} {
-		if !strings.Contains(orchestrator, strings.ToLower(required)) {
-			t.Errorf("orchestrator planner gate is missing %q", required)
+		if request.Verdict != "pass" {
+			t.Errorf("example %d verdict = %q, completion is only valid on pass", index, request.Verdict)
 		}
-	}
-}
-
-func TestOrchestratorRequiresPreBriefSolutionComparison(t *testing.T) {
-	orchestrator := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " "))
-	for _, required := range []string{
-		"### solution comparison gate",
-		"after the selected product/technical interview work",
-		"before the brief is complete",
-		"briefly inspect the relevant repository",
-		"compare 2-3 viable alternatives when that many exist",
-		"never invent alternatives",
-		"if only one option is viable",
-		"complexity",
-		"risk",
-		"guarantee",
-		"operational impact",
-		"reversibility",
-		"scope change",
-		"state one recommendation",
-		"explicit selection",
-		"separate solution-choice `question`",
-		"separate from the existing route-selection question",
-		"materially changes scope",
-		"before that choice",
-		"preserve the repository evidence, full matrix, recommendation",
-		"pass them verbatim in the brief to `openspec-planner`",
-	} {
-		if !strings.Contains(orchestrator, required) {
-			t.Errorf("orchestrator solution-comparison gate is missing %q", required)
+		if len(request.Snapshot.PendingTasks) == 0 {
+			t.Errorf("example %d snapshot has no pending tasks to complete", index)
 		}
-	}
-	if strings.Contains(orchestrator, "/grill-me") {
-		t.Error("orchestrator introduced the out-of-scope /grill-me path")
-	}
-
-	gate := strings.Index(orchestrator, "### solution comparison gate")
-	brief := strings.Index(orchestrator, "the interview ends with a completed brief")
-	route := strings.Index(orchestrator, "## execution route selection")
-	if gate < 0 || brief < 0 || route < 0 || !(brief < gate && gate < route) {
-		t.Fatalf("solution-comparison gate ordering is invalid: brief=%d gate=%d route=%d", brief, gate, route)
-	}
-}
-
-func TestOrchestratorSupportsManualReviewWithSharedReviewerSelection(t *testing.T) {
-	orchestrator := strings.ToLower(strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " "))
-	for _, required := range []string{
-		"manual review request",
-		"explicit user request to review the current state",
-		"planned tasks remain pending",
-		"before `openspec-verifier`",
-		"same one multi-select `question`",
-		"security risk",
-		"simplicity",
-		"correctness",
-		"none",
-		"mutually exclusive",
-		"no reviewer option is preselected",
-		"do not infer the reviewer selection",
-		"reviewed, not verified",
-		"must not mark or unmark openspec tasks",
-		"satisfy the verifier gate",
-		"archive a change",
-		"do not trigger verification or archive automatically",
-	} {
-		if !strings.Contains(orchestrator, required) {
-			t.Errorf("orchestrator manual-review contract is missing %q", required)
+		if !reflect.DeepEqual(request.Tasks, request.Snapshot.PendingTasks) {
+			t.Errorf("example %d tasks %#v must equal snapshot.pendingTasks %#v",
+				index, request.Tasks, request.Snapshot.PendingTasks)
 		}
-	}
-
-	manual := strings.Index(orchestrator, "### manual review request")
-	automatic := strings.Index(orchestrator, "### automatic review gate")
-	if manual < 0 || automatic < 0 || manual >= automatic {
-		t.Fatalf("manual review entry point must precede the automatic gate: manual=%d automatic=%d", manual, automatic)
-	}
-	if !strings.Contains(orchestrator[automatic:], "once `openspec-verifier` reports the change verified") {
-		t.Error("automatic OpenSpec review gate no longer remains verifier-gated")
-	}
-}
-
-func TestOpenSpecBootstrapDelegatesProjectIntegrationToOpenSpec(t *testing.T) {
-	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
-	normalized := strings.Join(strings.Fields(orchestrator), " ")
-	for _, required := range []string{
-		"openspec config profile core",
-		"openspec config set delivery both",
-		"openspec context --json",
-		"openspec init --tools opencode",
-		"openspec update",
-		"official core profile",
-		"Verify all six official core skill files",
-		"tool host",
-		"separate from the selected planning store",
-		"resolved planning paths",
-		"source `nearest`",
-		"no_openspec_root",
-		"no_root_with_registered_stores",
-	} {
-		if !strings.Contains(normalized, required) {
-			t.Errorf("OpenSpec bootstrap contract is missing %q", required)
+		if len(request.Evidence) != len(request.Tasks) {
+			t.Fatalf("example %d has %d evidence entries for %d tasks",
+				index, len(request.Evidence), len(request.Tasks))
 		}
-	}
-	for _, forbidden := range []string{
-		"openspec init --tools none",
-		"metadata.generatedBy",
-		"~/.config/opencode/skills/openspec/",
-		"Never run `openspec update`",
-		"current global OpenSpec profile, workflow, and delivery configuration",
-		"enable it with `openspec config profile`",
-		"context-and-skill",
-		"<required-core-skill",
-	} {
-		if strings.Contains(orchestrator, forbidden) {
-			t.Errorf("OpenSpec bootstrap retains obsolete contract %q", forbidden)
+		for position, evidence := range request.Evidence {
+			if !reflect.DeepEqual(evidence.Task, request.Tasks[position]) {
+				t.Errorf("example %d evidence %d covers %#v, want %#v",
+					index, position, evidence.Task, request.Tasks[position])
+			}
+			if evidence.Status != "pass" {
+				t.Errorf("example %d evidence %d status = %q", index, position, evidence.Status)
+			}
+			if len(evidence.Commands) == 0 {
+				t.Errorf("example %d evidence %d cites no executed command", index, position)
+			}
+			for _, command := range evidence.Commands {
+				if len(command.Command) == 0 {
+					t.Errorf("example %d evidence %d has an empty command vector", index, position)
+				}
+				if command.ExitCode != 0 {
+					t.Errorf("example %d evidence %d cites non-zero exit %d", index, position, command.ExitCode)
+				}
+			}
 		}
 	}
 }
 
-func TestOpenSpecPlannerContinuesPartialChangesWithOfficialCLI(t *testing.T) {
-	orchestrator := strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "angel-orchestrator.md")), " ")
-	planner := strings.Join(strings.Fields(readRepositoryAsset(t, "agents", "openspec-planner.md")), " ")
-
-	for _, required := range []string{
-		"core artifact continuation protocol",
-		"openspec status --change <name> --json",
-		"openspec instructions <artifact-id> --change <name> --json",
-		"required transitive artifact set",
-		"resolvedOutputPath",
-		"re-run status after each artifact",
-		"exact writes authorized by that skill",
-		"resolved planning home",
-		"blocked only by explicitly omitted conditional dependencies",
-	} {
-		if !strings.Contains(planner, required) {
-			t.Errorf("planner continuation contract is missing %q", required)
-		}
+// Agent assets may name only the Angel worker agents and the official
+// OpenSpec core workflow skills generated by `openspec init`. Checking every
+// `openspec-*` reference against that registry catches typos and any
+// dependency on a non-core workflow, wherever and however the prompts phrase
+// it.
+func TestAgentAssetsReferenceOnlyOfficialOpenSpecNames(t *testing.T) {
+	allowed := map[string]bool{
+		// Angel worker agents.
+		"openspec-planner":     true,
+		"openspec-implementer": true,
+		"openspec-verifier":    true,
+		// angel-ai CLI subcommand run by the orchestrator's bootstrap gate.
+		"openspec-bootstrap": true,
+		// Official core workflow skills.
+		"openspec-propose":        true,
+		"openspec-explore":        true,
+		"openspec-apply-change":   true,
+		"openspec-update-change":  true,
+		"openspec-sync-specs":     true,
+		"openspec-archive-change": true,
 	}
-	for _, required := range []string{
-		"partially planned existing change",
-		"core artifact continuation protocol",
-	} {
-		if !strings.Contains(orchestrator, required) {
-			t.Errorf("orchestrator continuation route is missing %q", required)
+	reference := regexp.MustCompile(`openspec-[a-z][a-z0-9-]*`)
+	for _, name := range ConfigurableAgents() {
+		asset := readRepositoryAsset(t, "agents", name+".md")
+		for _, match := range reference.FindAllString(asset, -1) {
+			if !allowed[match] {
+				t.Errorf("%s references unknown OpenSpec name %q", name, match)
+			}
 		}
 	}
 }
 
-func TestOpenSpecAgentsUseOnlyOfficialCoreWorkflowSkills(t *testing.T) {
-	orchestrator := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
-	planner := readRepositoryAsset(t, "agents", "openspec-planner.md")
-	implementer := readRepositoryAsset(t, "agents", "openspec-implementer.md")
-	verifier := readRepositoryAsset(t, "agents", "openspec-verifier.md")
-	normalizedVerifier := strings.Join(strings.Fields(verifier), " ")
-	combined := strings.Join([]string{orchestrator, planner, implementer, verifier}, "\n")
-
-	for _, required := range []string{
-		"openspec-propose",
-		"openspec-explore",
-		"openspec-apply-change",
-		"openspec-update-change",
-		"openspec-sync-specs",
-		"openspec-archive-change",
-	} {
-		if !strings.Contains(combined, required) {
-			t.Errorf("official core workflow contract is missing %q", required)
-		}
+// The orchestrator loads its interview skills by name at runtime. Every
+// `*-grilling` skill it names must exist as an installable skill asset, so a
+// rename or removal on either side fails here instead of mid-interview.
+func TestOrchestratorInterviewSkillsAreInstallableAssets(t *testing.T) {
+	asset := readRepositoryAsset(t, "agents", "angel-orchestrator.md")
+	reference := regexp.MustCompile("`([a-z0-9]+(?:-[a-z0-9]+)*-grilling)`")
+	matches := reference.FindAllStringSubmatch(asset, -1)
+	if len(matches) == 0 {
+		t.Fatal("orchestrator no longer names any interview skill")
 	}
-	for _, forbidden := range []string{
-		"openspec-new-change",
-		"openspec-continue-change",
-		"openspec-ff-change",
-		"openspec-bulk-archive-change",
-		"openspec-verify-change",
-		"openspec-onboard",
-	} {
-		if strings.Contains(combined, forbidden) {
-			t.Errorf("agent assets still depend on non-core workflow %q", forbidden)
-		}
-	}
-	for _, required := range []string{
-		"does not load an OpenSpec verification skill",
-		"openspec status --change <name> --json",
-		"openspec instructions apply --change <name> --json",
-		"completeness, correctness, and coherence",
-	} {
-		if !strings.Contains(normalizedVerifier, required) {
-			t.Errorf("core-compatible verifier contract is missing %q", required)
+	for _, match := range matches {
+		name := match[1]
+		skillPath := filepath.Join("..", "..", "assets", "skills", name, "SKILL.md")
+		if _, err := os.Stat(skillPath); err != nil {
+			t.Errorf("orchestrator references interview skill %q with no installable asset: %v", name, err)
 		}
 	}
 }

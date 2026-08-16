@@ -93,21 +93,17 @@ Return a compact but evidence-complete result containing:
   `openspec status --change <name> --json`;
 - every command executed in exact order, with its exact invocation and exit
   code (use `none` when no command was executed);
-- for every non-zero command, an ordered corrected-failure or recovered-probe
-  record. A corrected-failure record MUST contain the failed command and exit
-  code, diagnosed cause, bounded correction, later equivalent-or-broader
-  relevant validation command and exit code, and evidence that the successful
-  validation covers the failed command's relevant scope. The correction and
-  validation MUST come from the same worker in the same bounded invocation. A
-  recovered-probe record MUST contain the failed inspection command and exit
-  code, the absent state that caused it, the successful authorized operation,
-  the authoritative final validation command and exit code, and why that
-  validation proves the requested final state;
+- for every non-zero command, an ordered corrected-failure record containing
+  the failed command and exit code, the diagnosed cause (including an
+  inspection probe that failed only because expected state was absent), the
+  bounded correction or successful authorized operation that resolved it, and
+  the later equivalent-or-broader relevant validation command and exit code
+  with evidence that the successful validation covers the failed command's
+  relevant scope or proves the requested final state. The correction and
+  validation MUST come from the same worker in the same bounded invocation;
 - final relevant validation state, including the command and exit code that
   establishes it;
-- `control diagnostics` (`none` when empty),
-  `generated-validation-artifacts` (`none` when empty), and deviations,
-  including scope expansion and out-of-scope work; and
+- deviations, including scope expansion and out-of-scope work; and
 - an explicit `evidence gap` when any required fact is missing or ambiguous.
 
 A non-zero command is not evidence-complete merely because a later command

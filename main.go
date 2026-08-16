@@ -18,6 +18,7 @@ import (
 	"angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 	"angel-ai-opencode/internal/install"
+	"angel-ai-opencode/internal/openspecbootstrap"
 	"angel-ai-opencode/internal/tui"
 	"angel-ai-opencode/internal/updater"
 	"angel-ai-opencode/internal/verifiertasks"
@@ -49,6 +50,7 @@ type cliDependencies struct {
 	workingDirectory      func() (string, error)
 	captureVerifierTasks  func(context.Context, verifiertasks.ResolveRequest) (verifiertasks.Result, error)
 	completeVerifierTasks func(context.Context, verifiertasks.ResolveRequest, verifiertasks.CompleteRequest) (verifiertasks.Result, error)
+	runOpenSpecBootstrap  func(context.Context, openspecbootstrap.Request) (openspecbootstrap.Result, error)
 }
 
 func main() {
@@ -72,6 +74,7 @@ func defaultCLIDependencies() cliDependencies {
 		workingDirectory:      os.Getwd,
 		captureVerifierTasks:  verifierTasks.Capture,
 		completeVerifierTasks: verifierTasks.Complete,
+		runOpenSpecBootstrap:  openspecbootstrap.NewService().Run,
 	}
 }
 
@@ -84,6 +87,8 @@ func runCLI(args []string, dependencies cliDependencies) error {
 			return runUpdateCommand(args[1:], dependencies)
 		case "verifier-tasks":
 			return runVerifierTasksCommand(args[1:], dependencies)
+		case "openspec-bootstrap":
+			return runOpenSpecBootstrapCommand(args[1:], dependencies)
 		default:
 			return fmt.Errorf("unknown command %q", args[0])
 		}
@@ -151,6 +156,40 @@ func runVerifierTasksCommand(args []string, dependencies cliDependencies) error 
 	// a nil operation error. Non-nil errors are reserved for malformed input or
 	// infrastructure and encoding failures, which map to a non-zero CLI exit.
 	return err
+}
+
+// runOpenSpecBootstrapCommand prepares the working directory (and optional
+// explicit store) for the OpenSpec workflow and emits one structured JSON
+// result. A logical block is a complete result with exit 0; non-zero exits
+// are reserved for malformed input and infrastructure failures.
+func runOpenSpecBootstrapCommand(args []string, dependencies cliDependencies) error {
+	flags := flag.NewFlagSet("angel-ai openspec-bootstrap", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	store := flags.String("store", "", "explicit OpenSpec store id")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("openspec-bootstrap: unexpected argument %q", flags.Arg(0))
+	}
+	if dependencies.runOpenSpecBootstrap == nil {
+		return fmt.Errorf("openspec-bootstrap: operation is unavailable")
+	}
+	if dependencies.workingDirectory == nil {
+		return fmt.Errorf("openspec-bootstrap: working-directory resolver is unavailable")
+	}
+	directory, err := dependencies.workingDirectory()
+	if err != nil {
+		return fmt.Errorf("openspec-bootstrap: resolving working directory: %w", err)
+	}
+	result, err := dependencies.runOpenSpecBootstrap(context.Background(), openspecbootstrap.Request{
+		WorkingDirectory: directory,
+		Store:            *store,
+	})
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(dependencies.stdout).Encode(result)
 }
 
 func ensureJSONEnd(decoder *json.Decoder) error {

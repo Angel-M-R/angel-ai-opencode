@@ -12,6 +12,7 @@ import (
 
 	assetfs "angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/install"
+	"angel-ai-opencode/internal/openspecbootstrap"
 	"angel-ai-opencode/internal/verifiertasks"
 )
 
@@ -221,6 +222,36 @@ func TestRunCLIVerifierTasksSnapshotPreservesExplicitStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Snapshot == nil || !reflect.DeepEqual(*result.Snapshot, wantSnapshot) {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestRunCLIOpenSpecBootstrapEmitsStructuredJSON(t *testing.T) {
+	var output bytes.Buffer
+	err := runCLI([]string{"openspec-bootstrap", "--store", "shared"}, cliDependencies{
+		stdout:           &output,
+		workingDirectory: func() (string, error) { return "/repo", nil },
+		runOpenSpecBootstrap: func(_ context.Context, request openspecbootstrap.Request) (openspecbootstrap.Result, error) {
+			if request.WorkingDirectory != "/repo" || request.Store != "shared" {
+				t.Fatalf("bootstrap request = %+v", request)
+			}
+			return openspecbootstrap.Result{
+				Status:         "ready",
+				IntegrationKey: "store:shared@/repo",
+				ToolHost:       "/repo",
+				Commands:       []openspecbootstrap.CommandRecord{},
+				Warnings:       []openspecbootstrap.Warning{},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result openspecbootstrap.Result
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "ready" || result.IntegrationKey != "store:shared@/repo" {
 		t.Fatalf("result = %+v", result)
 	}
 }

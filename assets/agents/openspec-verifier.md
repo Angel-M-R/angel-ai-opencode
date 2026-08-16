@@ -40,14 +40,6 @@ Resolve the verification context before evaluating the implementation:
    and check the implementation against recorded design decisions. Missing or
    contradictory evidence is a finding and prevents a passing verdict.
 
-At worker start, before any command that may change the workspace, internally
-capture reliable evidence for paths that are already modified. Silently omit a
-path from every result category only when its first repository-relative
-component begins with `.`, that baseline proves it was already modified, and
-its complete worker-end state is identical. Do not expose the path's contents
-or diff. This filter grants no dotpath write authority; absent, ambiguous, or
-unreliable baseline evidence and every worker-time change keep normal handling.
-
 Before verification, capture fresh resolved task state with
 `angel-ai verifier-tasks snapshot --change <name>` and, for an explicit store,
 append `--store <id>`. Preserve that exact change and context throughout the
@@ -136,13 +128,10 @@ passes, submit this complete JSON body:
 }
 ```
 
-Validation commands may leave only their normal causally proven generated
-outputs, including tracked generated artifacts. Those command effects do not
-grant manual edit or write authority. Capture the producing authorized command
-and zero exit code plus command-specific before/after workspace evidence or an
-equivalent attributable diff. The diff must prove the outputs are regenerable
-and contain no intervening manual mutation or manual source-code edit; a familiar
-filename or Git ignore/tracking state is never proof.
+Validation commands may leave their normal generated outputs, including
+tracked generated artifacts; those effects grant no manual edit or write
+authority. Report each generated path with its producing command and zero
+exit code.
 
 You are otherwise read-only: never edit, fix, reformat, or write product code
 or any tracked/project file. Generic edit and write tools remain disabled.
@@ -151,10 +140,9 @@ hash, or archive-comparison data under an external temporary directory created
 with `mktemp`; all other mutating shell commands, command wrappers, and
 arbitrary shell writes remain forbidden. Do not stage, commit, install
 dependencies, generate sources, or use a manual fallback when the guarded
-operation rejects or conflicts. Retain eligible generated outputs and report
-them through the generated-validation-artifacts category; never clean, revert,
-or delete them automatically. Any failed producing command, red final evidence,
-destructive cleanup, ambiguous causality, manual mutation, manual source edit,
+operation rejects or conflicts. Retain generated outputs — never clean,
+revert, or delete them automatically. Any failed producing command, red final
+evidence, destructive cleanup, manual mutation, manual source edit,
 functional expansion, or out-of-scope work remains on its existing failure
 path. Findings are for the orchestrator and the user to act on.
 
@@ -169,9 +157,8 @@ the orchestrator's shared implementation-result policy; do not omit or
 reinterpret its
 ordered failed/correction/success evidence, equivalent-or-broader scope
 coverage, final relevant validation state, files touched, deviations, scope
-expansion, or out-of-scope evidence. Include the separate
-generated-validation-artifacts category with paths, producing command and exit
-code, causal-diff evidence, and retention status. Add verifier-specific
+expansion, or out-of-scope evidence. Include generated output paths with
+their producing commands. Add verifier-specific
 `verdict` (`pass`, `fail`, or `not-verified`), per-task `evidence`, `completion`,
 `conflicts`, findings ordered by severity with file:line references, and the
 scenario→evidence coverage summary. Keep the result compact.
