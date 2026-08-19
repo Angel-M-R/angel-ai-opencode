@@ -39,22 +39,10 @@ coordinator: it interviews the user, builds a confirmed Brief, routes the work
 through Direct workers or the OpenSpec workflow, and closes with an optional
 review gate.
 
-```mermaid
-flowchart LR
-    prompt([User prompt]) --> triage{Trivial?}
-    triage -- yes --> quick[Quick lane<br/>inline change + quick check]
-    triage -- no --> interview[Interview gate<br/>Product + Technical / Technical only / Skip]
-    interview --> route{Route selection}
-
-    route -- Direct --> direct[general workers<br/>implementation + integrated validation]
-    route -- OpenSpec --> openspec[OpenSpec agents<br/>planner → implementer → verifier]
-
-    direct --> review{Review gate<br/>multi-select}
-    openspec --> review
-    review --> correctness[review-correctness]
-    review --> security[review-security-risk]
-    review --> simplicity[review-simplicity]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/orchestrator-workflow-dark.svg">
+  <img alt="Orchestrator workflow: a user prompt is triaged; trivial changes take the quick lane, everything else goes through the interview gate, is routed to Direct workers or the OpenSpec agents, and both routes close at the review gate." src="docs/diagrams/orchestrator-workflow.svg" width="1416">
+</picture>
 
 ## What it does
 
