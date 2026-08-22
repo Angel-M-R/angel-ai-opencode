@@ -44,6 +44,67 @@ func TestRunGlobalCLICommandIncludesStderrOnFailure(t *testing.T) {
 	}
 }
 
+func TestPackageRegistrationProbeReadsLeadingJSONDespiteTrailingStderr(t *testing.T) {
+	tests := []struct {
+		name     string
+		parse    func([]byte, string) (bool, error)
+		output   string
+		registry string
+	}{
+		{
+			name:     "npm",
+			parse:    parseNPMPackageRegistration,
+			output:   "{\n  \"name\": \"lib\"\n}\nnpm ERR! code ELSPROBLEM\nnpm ERR! missing: @colbymchenry/codegraph@\n",
+			registry: "@colbymchenry/codegraph",
+		},
+		{
+			name:     "pnpm",
+			parse:    parsePNPMPackageRegistration,
+			output:   "[\n  {\n    \"name\": \"lib\"\n  }\n]\nnpm ERR! code ELSPROBLEM\n",
+			registry: "@colbymchenry/codegraph",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			output := []byte(test.output)
+			commandErr := errors.New("exit status 1")
+
+			registered, parseErr := test.parse(output, test.registry)
+			if parseErr != nil {
+				t.Fatalf("registration parse failed: %v", parseErr)
+			}
+
+			result := packageRegistrationProbeResult(registered, parseErr, commandErr, output)
+			if result.state != globalCLIPackageUnregistered {
+				t.Fatalf("registration state = %s (%s), want unregistered", result.state, result.detail)
+			}
+		})
+	}
+}
+
+func TestPackageRegistrationProbeRejectsOutputWithoutLeadingJSON(t *testing.T) {
+	output := []byte("npm ERR! network unreachable\n")
+	commandErr := errors.New("exit status 1")
+
+	registered, parseErr := parseNPMPackageRegistration(output, "@colbymchenry/codegraph")
+	result := packageRegistrationProbeResult(registered, parseErr, commandErr, output)
+	if result.state != globalCLIPackageRegistrationUnavailable {
+		t.Fatalf("registration state = %s, want unavailable", result.state)
+	}
+}
+
+func TestRegistryLatestVersionReadsLeadingJSONDespiteTrailingChatter(t *testing.T) {
+	descriptor := globalCLIDescriptor{registryPackage: "@example/cli"}
+	version := probeRegistryLatestVersion("/tools/npm", "view", descriptor, globalCLICommands{
+		run: func(string, ...string) ([]byte, error) {
+			return []byte("\"1.5.0\"\nnpm warn deprecated package\n"), nil
+		},
+	})
+	if version.state != globalCLIRegistryVersionAvailable || version.version.String() != "1.5.0" {
+		t.Fatalf("registry version = %+v, want available 1.5.0", version)
+	}
+}
+
 func TestSelectGlobalPackageManagerPrefersNPM(t *testing.T) {
 	var lookups []string
 	commands := globalCLICommands{
