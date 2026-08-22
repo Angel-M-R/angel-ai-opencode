@@ -3,16 +3,17 @@
 
 ## Installation
 
-The initial distribution supports **macOS on Apple Silicon** only
-(`Darwin/arm64`). It does not require Go or cloning this repository. Install the
-latest stable version with:
+The initial distribution supports **macOS on Apple Silicon** (`Darwin/arm64`)
+and **Linux** (`linux-amd64`, `linux-arm64`). It does not require Go or cloning
+this repository. Install the latest stable version with:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/Angel-M-R/angel-ai-opencode/main/install.sh | /bin/sh
 ```
 
 The installer verifies the download and places the executable in
-`~/.local/bin/angel-ai`.
+`~/.local/bin/angel-ai`. On Linux it needs `curl` and `python3`; on macOS it
+uses the built-in `plutil`.
 
 ```sh
 angel-ai                       # opens the interactive wizard

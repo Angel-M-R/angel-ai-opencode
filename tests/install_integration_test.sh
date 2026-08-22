@@ -4,7 +4,7 @@ set -u
 
 test_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 installer="$test_dir/../install.sh"
-official_manifest_url="https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest.json"
+official_manifest_base="https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download"
 artifact_url="https://downloads.example.test/angel-ai"
 passed=0
 failed=0
@@ -75,11 +75,13 @@ while [ "\$#" -gt 0 ]; do
 	esac
 done
 printf '%s\n' "\$url" >>"\$TEST_CURL_LOG"
-if [ "\$url" = "$official_manifest_url" ]; then
-	[ "\${TEST_MANIFEST_MODE:-ok}" = "ok" ] || exit 22
-	cp "\$TEST_MANIFEST_FILE" "\$output"
-	exit \$?
-fi
+case "\$url" in
+	"$official_manifest_base"/manifest-*.json)
+		[ "\${TEST_MANIFEST_MODE:-ok}" = "ok" ] || exit 22
+		cp "\$TEST_MANIFEST_FILE" "\$output"
+		exit \$?
+		;;
+esac
 if [ "\$url" = "$artifact_url" ]; then
 	[ "\${TEST_ARTIFACT_MODE:-ok}" = "ok" ] || exit 22
 	cp "\$TEST_ARTIFACT_FILE" "\$output"
@@ -100,7 +102,11 @@ cleanup_case() {
 }
 
 artifact_checksum() {
-	digest=$(shasum -a 256 "$artifact_file") || return 1
+	if command -v shasum >/dev/null 2>&1; then
+		digest=$(shasum -a 256 "$artifact_file") || return 1
+	else
+		digest=$(sha256sum "$artifact_file") || return 1
+	fi
 	printf '%s\n' "${digest%% *}"
 }
 
@@ -155,7 +161,7 @@ assert_no_artifact_temps() {
 test_unsupported_platforms_reject_before_download() (
 	setup_case || exit 1
 	trap cleanup_case 0
-	for platform in 'Darwin x86_64' 'Linux arm64' 'MINGW64_NT arm64' 'Darwin riscv64'; do
+	for platform in 'Darwin x86_64' 'MINGW64_NT arm64' 'Darwin riscv64' 'Linux riscv64' 'FreeBSD amd64'; do
 		test_uname_s=${platform% *}
 		test_uname_m=${platform#* }
 		rm -f "$curl_log"
@@ -175,6 +181,31 @@ test_first_install_on_supported_platform() (
 	assert_installed_bytes || exit 1
 	assert_contains "$installer_output" "Installed angel-ai v1.2.3" "success output omitted the installed version" || exit 1
 	assert_no_artifact_temps || exit 1
+)
+
+test_linux_install_fetches_platform_manifest() (
+	platform=$1
+	uname_architecture=$2
+	expected_platform=$3
+	setup_case || exit 1
+	trap cleanup_case 0
+	test_uname_s=Linux
+	test_uname_m=$uname_architecture
+	rm -f "$curl_log"
+	run_installer_from_stdin "$mock_bin:/usr/bin:/bin"
+	assert_equal "$installer_status" "0" "Linux $platform first install failed: $installer_output" || exit 1
+	assert_installed_bytes || exit 1
+	curl_urls=$(cat "$curl_log")
+	assert_contains "$curl_urls" "$official_manifest_base/manifest-$expected_platform.json" "$platform install did not fetch its platform manifest" || exit 1
+	assert_no_artifact_temps || exit 1
+)
+
+test_first_install_on_linux_amd64() (
+	test_linux_install_fetches_platform_manifest amd64 x86_64 linux-amd64
+)
+
+test_first_install_on_linux_arm64() (
+	test_linux_install_fetches_platform_manifest arm64 aarch64 linux-arm64
 )
 
 test_existing_binary_is_atomically_replaced() (
@@ -287,6 +318,8 @@ run_test() {
 
 run_test "unsupported hosts reject before download" test_unsupported_platforms_reject_before_download
 run_test "supported first install" test_first_install_on_supported_platform
+run_test "linux amd64 first install" test_first_install_on_linux_amd64
+run_test "linux arm64 first install" test_first_install_on_linux_arm64
 run_test "existing binary replacement" test_existing_binary_is_atomically_replaced
 run_test "manifest download failure preservation" test_manifest_download_failure_preserves_existing_binary
 run_test "invalid manifest preservation" test_invalid_manifests_preserve_existing_binary
