@@ -6,15 +6,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"time"
 )
 
-const (
-	// LatestManifestURL points directly at the manifest asset on the latest
-	// GitHub Release and does not use the GitHub API.
-	LatestManifestURL = "https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest.json"
-	RequestTimeout    = 2 * time.Second
-)
+const RequestTimeout = 2 * time.Second
+
+// LatestManifestURL points directly at the manifest asset for the running
+// GOOS/GOARCH pair on the latest GitHub Release and does not use the GitHub
+// API. Every release publishes one manifest per supported platform so a
+// self-update never downloads an artifact built for another platform.
+func LatestManifestURL() string {
+	return fmt.Sprintf("https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest-%s-%s.json", runtime.GOOS, runtime.GOARCH)
+}
 
 // HTTPClient is the network seam used for deterministic manifest tests.
 type HTTPClient interface {

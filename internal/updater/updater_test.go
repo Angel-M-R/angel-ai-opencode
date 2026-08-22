@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -141,10 +143,11 @@ func TestCheckRejectsManifestRetrievalFailures(t *testing.T) {
 }
 
 func TestManifestRequestUsesDirectURLAndTwoSecondTimeout(t *testing.T) {
+	wantURL := fmt.Sprintf("https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest-%s-%s.json", runtime.GOOS, runtime.GOARCH)
 	started := time.Now()
 	updater := New(Config{HTTP: httpClientFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.String() != LatestManifestURL {
-			t.Fatalf("request URL = %q", request.URL)
+		if request.URL.String() != wantURL {
+			t.Fatalf("request URL = %q, want %q", request.URL, wantURL)
 		}
 		deadline, ok := request.Context().Deadline()
 		if !ok {

@@ -56,7 +56,7 @@ func New(config Config) *Updater {
 		config.Output = os.Stdout
 	}
 	if config.ManifestURL == "" {
-		config.ManifestURL = LatestManifestURL
+		config.ManifestURL = LatestManifestURL()
 	}
 	if config.Timeout == 0 {
 		config.Timeout = RequestTimeout
