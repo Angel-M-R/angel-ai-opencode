@@ -16,6 +16,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"angel-ai-opencode/internal/commandrunner"
+)
+
+const (
+	commandTimeout     = time.Minute
+	commandOutputLimit = 1 << 20
 )
 
 // coreSkills are the six official core workflow skills a healthy OpenCode
@@ -42,20 +50,20 @@ type CommandRunner interface {
 	Run(context.Context, string, string, ...string) ([]byte, int, error)
 }
 
-type execRunner struct{}
+type execRunner struct {
+	runner *commandrunner.Runner
+}
 
-func (execRunner) Run(ctx context.Context, directory, name string, args ...string) ([]byte, int, error) {
-	command := exec.CommandContext(ctx, name, args...)
-	command.Dir = directory
-	output, err := command.CombinedOutput()
+func newExecRunner() execRunner {
+	return execRunner{runner: commandrunner.New(commandTimeout, commandOutputLimit)}
+}
+
+func (runner execRunner) Run(ctx context.Context, directory, name string, args ...string) ([]byte, int, error) {
+	result, err := runner.runner.RunProject(ctx, directory, name, args...)
 	if err == nil {
-		return output, 0, nil
+		return result.Stdout, result.ExitCode, nil
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return output, exitErr.ExitCode(), err
-	}
-	return output, -1, err
+	return result.DiagnosticOutput(), result.ExitCode, err
 }
 
 type Request struct {
@@ -89,7 +97,10 @@ type Service struct {
 }
 
 func NewService() *Service {
-	return &Service{runner: execRunner{}, lookPath: exec.LookPath}
+	return &Service{
+		runner:   newExecRunner(),
+		lookPath: exec.LookPath,
+	}
 }
 
 // Run executes the bootstrap sequence. A logical block is a complete
