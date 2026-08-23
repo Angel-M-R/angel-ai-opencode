@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [[ -n "${unformatted}" ]]; then
+            printf 'Run gofmt on these files:\n%s\n' "${unformatted}" >&2
+            exit 1
+          fi
+      - name: Run go vet
+        run: go vet ./...
+      - name: Run all Go tests
+        run: go test ./...
+      - name: Build all Go packages
+        run: go build ./...
+
+  installer-integration:
+    name: Installer integration
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run installer integration tests
+        run: /bin/sh tests/install_integration_test.sh
