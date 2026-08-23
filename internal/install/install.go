@@ -3,6 +3,7 @@
 package install
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -30,8 +31,13 @@ type fileWriteResult struct {
 	backupPath string
 }
 
-func reconcileFile(file preparedFile) (fileWriteResult, error) {
+var beforeFilePublish = func(string) error { return nil }
+
+func reconcileFile(file preparedFile, expectation FileExpectation, guarded bool) (fileWriteResult, error) {
 	previous, err := os.ReadFile(file.path)
+	if guardErr := verifyFileExpectation(file.path, previous, err, expectation, guarded, "after planning"); guardErr != nil {
+		return fileWriteResult{}, guardErr
+	}
 	created := false
 	switch {
 	case err == nil:
@@ -83,11 +89,60 @@ func reconcileFile(file preparedFile) (fileWriteResult, error) {
 		_ = os.Remove(tempPath)
 		return fileWriteResult{}, err
 	}
+	if err := beforeFilePublish(file.path); err != nil {
+		_ = os.Remove(tempPath)
+		return fileWriteResult{}, err
+	}
+	current, readErr := os.ReadFile(file.path)
+	if err := verifyFileExpectation(file.path, current, readErr, expectation, guarded, "before publication"); err != nil {
+		_ = os.Remove(tempPath)
+		return fileWriteResult{}, err
+	}
 	if err := os.Rename(tempPath, file.path); err != nil {
 		_ = os.Remove(tempPath)
 		return fileWriteResult{}, err
 	}
 	return result, nil
+}
+
+func verifyFileExpectation(
+	path string,
+	content []byte,
+	readErr error,
+	expectation FileExpectation,
+	guarded bool,
+	phase string,
+) error {
+	if !guarded {
+		return nil
+	}
+	if expectation.Absent {
+		if expectation.SHA256 != "" {
+			return fmt.Errorf("invalid file expectation for %s", path)
+		}
+		_, statErr := os.Lstat(path)
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		if statErr != nil {
+			return fmt.Errorf("checking managed file %s %s: %w", path, phase, statErr)
+		}
+		return fmt.Errorf("managed file expected to remain absent %s: %s", phase, path)
+	}
+	if expectation.SHA256 == "" {
+		return fmt.Errorf("invalid file expectation for %s", path)
+	}
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return fmt.Errorf("managed file changed %s: %s is missing", phase, path)
+		}
+		return fmt.Errorf("checking managed file %s %s: %w", path, phase, readErr)
+	}
+	actual := fmt.Sprintf("%x", sha256.Sum256(content))
+	if actual != expectation.SHA256 {
+		return fmt.Errorf("managed file changed %s: %s", phase, path)
+	}
+	return nil
 }
 
 func fileResultLines(path string, result fileWriteResult) []string {

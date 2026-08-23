@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	assetfs "angel-ai-opencode/internal/assets"
+	"angel-ai-opencode/internal/catalog"
 	"angel-ai-opencode/internal/install"
+	"angel-ai-opencode/internal/managedassets"
 	"angel-ai-opencode/internal/openspecbootstrap"
 	"angel-ai-opencode/internal/verifiertasks"
 )
@@ -473,6 +477,73 @@ func TestRunCLIDevSuppressesAutomaticAndForcedUpdates(t *testing.T) {
 				t.Fatalf("output = %q, want %q", stdout.String(), test.wantOutput)
 			}
 		})
+	}
+}
+
+func TestRunCLIDoctorAndSyncRespectExplicitTarget(t *testing.T) {
+	assetRoot := t.TempDir()
+	target := t.TempDir()
+	assetPath := filepath.Join(assetRoot, "agents", "worker.md")
+	if err := os.MkdirAll(filepath.Dir(assetPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(assetPath, []byte("worker v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	source := assetfs.Directory(assetRoot)
+	request := install.InstallationRequest{
+		Items: []catalog.Item{{
+			Name: "worker", Source: "agents/worker.md", Dest: "agents/worker.md", Kind: catalog.CopyFile,
+		}},
+		Extras: map[string]bool{}, Assets: source, ConfigDir: target,
+	}
+	if _, err := managedassets.Apply(request); err != nil {
+		t.Fatal(err)
+	}
+
+	var doctorOutput bytes.Buffer
+	if err := runCLI([]string{"doctor", "--assets", assetRoot, "--target", target}, cliDependencies{stdout: &doctorOutput}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doctorOutput.String(), "correctos") {
+		t.Fatalf("doctor output = %q", doctorOutput.String())
+	}
+
+	if err := os.WriteFile(assetPath, []byte("worker v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var syncOutput bytes.Buffer
+	if err := runCLI([]string{"sync", "--dry-run", "--assets", assetRoot, "--target", target}, cliDependencies{stdout: &syncOutput}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(syncOutput.String(), "ACTUALIZAR") || !strings.Contains(syncOutput.String(), filepath.Join(target, "agents", "worker.md")) {
+		t.Fatalf("sync output = %q", syncOutput.String())
+	}
+	content, err := os.ReadFile(filepath.Join(target, "agents", "worker.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "worker v1\n" {
+		t.Fatalf("sync dry-run wrote %q", content)
+	}
+}
+
+func TestRunCLIDoctorReportsMissingState(t *testing.T) {
+	assetRoot := t.TempDir()
+	assetPath := filepath.Join(assetRoot, "agents", "worker.md")
+	if err := os.MkdirAll(filepath.Dir(assetPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(assetPath, []byte("worker\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	err := runCLI([]string{"doctor", "--assets", assetRoot, "--target", t.TempDir()}, cliDependencies{stdout: &output})
+	if err == nil {
+		t.Fatal("doctor accepted a target without managed state")
+	}
+	if !strings.Contains(output.String(), ".angel-ai-state.json") {
+		t.Fatalf("doctor output = %q", output.String())
 	}
 }
 

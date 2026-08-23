@@ -15,6 +15,7 @@ import (
 	"angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 	"angel-ai-opencode/internal/install"
+	"angel-ai-opencode/internal/managedassets"
 )
 
 var (
@@ -838,7 +839,7 @@ func installCmd(
 	configDir string,
 ) tea.Cmd {
 	return func() tea.Msg {
-		report, err := install.ApplyInstallation(install.InstallationRequest{
+		report, err := managedassets.Apply(install.InstallationRequest{
 			Items: items, Extras: extras, Assets: assetSource, ConfigDir: configDir,
 			AgentModels: agentModels,
 		})
@@ -896,12 +897,12 @@ func (m Model) View() string {
 			if m.extraSelected[j] {
 				check = checkedStyle.Render("[x]")
 			}
-				b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, extra.Label))
-				b.WriteString("       " + helpStyle.Render(extra.Description) + "\n")
-			}
-			b.WriteString("\n" + helpStyle.Render("Si ya está instalado, desmarcarlo no lo desinstalará") + "\n")
-			b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
-		case agentModelsPhase:
+			b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, extra.Label))
+			b.WriteString("       " + helpStyle.Render(extra.Description) + "\n")
+		}
+		b.WriteString("\n" + helpStyle.Render("Si ya está instalado, desmarcarlo no lo desinstalará") + "\n")
+		b.WriteString("\n" + helpStyle.Render("espacio marcar · a todos · n ninguno · ←/→ paso · enter siguiente · q salir"))
+	case agentModelsPhase:
 		b.WriteString(m.agentModelsView())
 	case analyzing:
 		b.WriteString(m.loadingView("Analizando archivos…"))

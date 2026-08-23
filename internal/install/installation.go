@@ -28,6 +28,16 @@ type InstallationRequest struct {
 	// or empty map writes nothing, which is what the non-interactive path
 	// passes.
 	AgentModels AgentModelAssignments
+	// FileExpectations guard managed updates against changes made after
+	// planning. Files without an entry use normal installer reconciliation.
+	FileExpectations map[string]FileExpectation
+}
+
+// FileExpectation describes the state a managed destination must retain until
+// publication. SHA256 and Absent are mutually exclusive.
+type FileExpectation struct {
+	SHA256 string
+	Absent bool
 }
 
 type preparedFile struct {
@@ -101,13 +111,35 @@ func ApplyInstallation(request InstallationRequest) ([]string, error) {
 		}
 	}
 	for _, file := range prepared.files {
-		result, err := reconcileFile(file)
+		expectation, guarded := request.FileExpectations[file.path]
+		result, err := reconcileFile(file, expectation, guarded)
 		if err != nil {
 			return done, err
 		}
 		done = append(done, fileResultLines(file.path, result)...)
 	}
 	return done, nil
+}
+
+// ManagedFilePaths returns the files the request reconciles under ConfigDir.
+// It uses the same preparation path as planning and applying, but it performs
+// no package installation or file write.
+func ManagedFilePaths(request InstallationRequest) ([]string, error) {
+	prepared, err := prepareInstallation(request)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(prepared.files))
+	seen := make(map[string]struct{}, len(prepared.files))
+	for _, file := range prepared.files {
+		if _, ok := seen[file.path]; ok {
+			continue
+		}
+		seen[file.path] = struct{}{}
+		paths = append(paths, file.path)
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func (file preparedFile) contentMatches(content []byte) bool {
