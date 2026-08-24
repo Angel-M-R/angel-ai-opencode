@@ -311,7 +311,7 @@ the planned-task self-repair rule defined below; that changes only who may
 repair an attributable failure, not the classification below.
 
 **Canonical state-and-result classification (authoritative; inject verbatim
-into every Direct worker prompt).** After applying the corrected-failure rule
+into every worker prompt).** After applying the corrected-failure rule
 where eligible, classify every unexpected result or state by proven cause and
 impact, regardless of Git visibility:
 
@@ -329,7 +329,7 @@ impact, regardless of Git visibility:
   ambiguous or missing attribution, relevant red validation, `partial` or
   `blocked` result, actual scope expansion, or state that does not meet either
   continuable category. Retain its evidence and apply the mandatory-stop
-  policy. Direct OpenSpec invocation remains blocking under its guard.
+  policy.
 
 Classify a command result separately from the state it leaves: continuable
 state never excuses a relevant command failure or authorizes unrelated repair.
@@ -410,9 +410,9 @@ evidence and classify it canonically, continuing only when relevant validation
 for the bounded batch and requested final state is green. Authorized reads and
 focused validation do not widen the batch; any local/output state they leave is
 continuable only when it satisfies the benign attributable category. This rule
-applies nowhere else — never to Direct work,
-review-fix batches, bootstrap, target resolution, finding-ID fixes, or final
-verification — and never makes incomplete or red work complete.
+applies nowhere else — never to Direct work, review-fix batches, bootstrap,
+target resolution, finding-ID fixes, or final verification — and never makes
+incomplete or red work complete.
 
 ### Direct execution
 
@@ -640,8 +640,8 @@ Pass references, never artifact bodies. Planner and implementer prompts use:
 Invoke the official core skill <skill-name> for change <change-name>.
 Brief: <confirmed interview brief — planner only>
 Constraints: <scope limits; for the implementer, the exact task batch>
-Classification: apply the Canonical state-and-result classification adopted by
-the worker system prompt; do not restate or alter it.
+Classification: <the complete Canonical state-and-result classification above,
+verbatim>
 Return: the Shared corrected-failure result fields, plus the route-specific
 next recommended action. For verification, also return verdict, task evidence,
 completion, conflicts, findings, and scenario coverage. Compact — no artifact
@@ -804,12 +804,11 @@ validation; finishing a batch never by itself completes a task. The result
 contract is the Shared corrected-failure result fields plus repair-progress
 evidence and every directly-necessary supporting adjustment; the worker stops
 and reports unauthorized functional out-of-batch writes, functional expansion,
-destructive commands,
-unresolvable OpenSpec state, or a checked-task/red-validation conflict instead
-of repairing or working around them. Benign attributable local/output state is
-retained and reported without widening the batch or stopping it. If fresh state
-shows the intended batch is already complete, skip the stale work and recompute
-the next batch.
+destructive commands, unresolvable OpenSpec state, or a
+checked-task/red-validation conflict instead of repairing or working around
+them. Benign attributable local/output state is retained and reported without
+widening the batch or stopping it. If fresh state shows the intended batch is
+already complete, skip the stale work and recompute the next batch.
 
 ### Implementation stops and completion routing
 

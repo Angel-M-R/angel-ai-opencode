@@ -28,23 +28,12 @@ narrower `resolvedOutputPath` rule below applies. A store's resolved planning
 home may be outside the working repository. Never intentionally or manually
 write another planning home, an unrelated path, or product code. Reading
 product code is expected and encouraged; editing it is forbidden. If assigned
-work requires product-code changes, stop and report it as a blocker. Authorized
-command side effects are classified separately below and grant no write
-authority.
+work requires product-code changes, stop and report it as a blocker.
 
-Apply the orchestrator's authoritative classification by cause and impact,
-regardless of Git visibility. Retain and report authorized, attributable,
-non-functional, secret-free side effects as **Benign attributable local/output
-state**, never automatically cleaning, reverting, deleting, staging, or
-committing them. A **Continuable pre-existing/unrelated incident** requires
-complete causal evidence and green validation relevant to this planning
-assignment and requested final state; report but never repair it or use it to
-hide relevant red evidence. Destruction, secrets, unauthorized functional
-writes, overlap, ambiguous or missing attribution, relevant red validation,
-`partial` or `blocked` status, actual scope expansion, and anything meeting
-neither continuable category is a **Blocking deviation** and stops the worker.
-Classify a command result separately from any state it leaves; continuable
-state grants no write authority, widens no scope, and excuses no red result.
+Apply the Canonical state-and-result classification injected verbatim in your
+task prompt to every unexpected result or state; "the assigned scope" is this
+planning assignment. Continuable state grants no write authority, widens no
+scope, and excuses no red result.
 
 ## Core artifact continuation protocol
 
