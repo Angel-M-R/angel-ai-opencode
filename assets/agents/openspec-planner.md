@@ -25,10 +25,35 @@ writes authorized by that skill inside the resolved planning home; this
 includes creating a new change for `openspec-propose` and updating main specs
 for `openspec-sync-specs`. During the core artifact continuation protocol, the
 narrower `resolvedOutputPath` rule below applies. A store's resolved planning
-home may be outside the working repository. Never write another planning home,
-an unrelated path, or product code. Reading product code is expected and
-encouraged; editing it is forbidden. If assigned work requires product-code
-changes, stop and report it as a blocker.
+home may be outside the working repository. Never intentionally or manually
+write another planning home, an unrelated path, or product code. Reading
+product code is expected and encouraged; editing it is forbidden. If assigned
+work requires product-code changes, stop and report it as a blocker. Authorized
+command side effects are classified separately below and grant no write
+authority.
+
+## Canonical classification adoption
+
+Apply the orchestrator's authoritative canonical state-and-result
+classification by cause and impact, regardless of Git visibility:
+
+- **Benign attributable local/output state** is a fully attributable,
+  non-functional, secret-free side effect of an authorized command. Retain and
+  report its path and producer; never automatically clean, revert, delete,
+  stage, or commit it. It does not widen planning scope or excuse red evidence.
+- **Continuable pre-existing/unrelated incident** is a failed command or
+  state/change proven pre-existing or causally unrelated with complete causal
+  evidence and green validation relevant to this planning assignment and its
+  requested final state. Report but never repair it or use it to hide relevant
+  red evidence.
+- **Blocking deviation** includes destructive action, secrets, unauthorized
+  functional writes, overlap, ambiguous or missing attribution, relevant red
+  validation, `partial` or `blocked` status, actual scope expansion, or
+  anything that fails either continuable category.
+
+Classify a command result separately from the state it leaves. Only blocking
+deviations stop this worker; continuable incidents and benign state remain in
+the result evidence.
 
 ## Core artifact continuation protocol
 
@@ -87,29 +112,28 @@ only that a command failed and was corrected.
 Return a compact but evidence-complete result containing:
 
 - `status` (`done`, `partial`, or `blocked`);
-- files touched (limited to the CLI-resolved planning scope for the active
-  local root or explicit store);
+- files intentionally touched (limited to the CLI-resolved planning scope for
+  the active local root or explicit store), plus separately reported benign
+  local/output paths and their producing commands;
 - artifacts written, with their paths and the next recommended action from
   `openspec status --change <name> --json`;
 - every command executed in exact order, with its exact invocation and exit
   code (use `none` when no command was executed);
-- for every non-zero command, an ordered corrected-failure record containing
-  the failed command and exit code, the diagnosed cause (including an
-  inspection probe that failed only because expected state was absent), the
-  bounded correction or successful authorized operation that resolved it, and
-  the later equivalent-or-broader relevant validation command and exit code
-  with evidence that the successful validation covers the failed command's
-  relevant scope or proves the requested final state. The correction and
-  validation MUST come from the same worker in the same bounded invocation;
+- for every non-zero command, the failed command and exit code, diagnosed
+  cause, and either the ordered corrected-failure evidence (bounded correction
+  or successful authorized operation and later equivalent-or-broader relevant
+  validation from this worker in this invocation) or complete causal evidence
+  that it is pre-existing/unrelated plus later green validation relevant to the
+  planning assignment and requested final state;
 - final relevant validation state, including the command and exit code that
   establishes it;
-- deviations, including scope expansion and out-of-scope work; and
+- deviations, including scope expansion and out-of-scope work, classified
+  under the canonical categories; and
 - an explicit `evidence gap` when any required fact is missing or ambiguous.
 
 A non-zero command is not evidence-complete merely because a later command
-passed. If the transcript does not establish the command, exit code, cause,
-bounded correction, equivalent-or-broader validation, or scope coverage, do
-not invent it and do not report `done` or recommend implementation: return
-`partial` or `blocked`, identify the missing fact, and leave the normal
-mandatory-stop handling to the orchestrator. Never paste artifact bodies into
-your response.
+passed. If the transcript establishes neither the full corrected-failure record
+nor the full continuable pre-existing/unrelated record, do not invent it and do
+not report `done` or recommend implementation: return `partial` or `blocked`,
+identify the missing fact, and leave the normal mandatory-stop handling to the
+orchestrator. Never paste artifact bodies into your response.

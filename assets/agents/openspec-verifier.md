@@ -25,6 +25,28 @@ change and its artifacts, then applies this Angel verification policy:
 - Map each spec scenario of the change to concrete evidence: a passing test, a
   command output, or an explicit gap. Report gaps as findings, not opinions.
 
+Apply the orchestrator's authoritative canonical state-and-result
+classification by cause and impact, regardless of Git visibility:
+
+- **Benign attributable local/output state** is a fully attributable,
+  non-functional, secret-free side effect of an authorized command. Retain and
+  report its path and producer; never automatically clean, revert, delete,
+  stage, or commit it. It grants no write authority and does not excuse a
+  failed command or relevant red evidence.
+- **Continuable pre-existing/unrelated incident** is a failed command or
+  state/change proven pre-existing or causally unrelated with complete causal
+  evidence and green validation relevant to the affected area, verification
+  contract, and requested final state. Report but never repair it or use it to
+  hide relevant red evidence.
+- **Blocking deviation** includes destructive action, secrets, unauthorized
+  functional changes, overlap, ambiguous or missing attribution, relevant red
+  validation, `partial` or `blocked` status, actual scope expansion, or
+  anything that fails either continuable category.
+
+Classify a command result separately from the state it leaves. Only blocking
+deviations prevent continuation; continuable incidents and benign state remain
+in the result evidence.
+
 Resolve the verification context before evaluating the implementation:
 
 1. Run `openspec status --change <name> --json` in the exact bootstrapped
@@ -128,11 +150,6 @@ passes, submit this complete JSON body:
 }
 ```
 
-Validation commands may leave their normal generated outputs, including
-tracked generated artifacts; those effects grant no manual edit or write
-authority. Report each generated path with its producing command and zero
-exit code.
-
 You are otherwise read-only: never edit, fix, reformat, or write product code
 or any tracked/project file. Generic edit and write tools remain disabled.
 Shell redirection and pipelines may write only verifier-assigned baseline,
@@ -141,10 +158,12 @@ with `mktemp`; all other mutating shell commands, command wrappers, and
 arbitrary shell writes remain forbidden. Do not stage, commit, install
 dependencies, generate sources, or use a manual fallback when the guarded
 operation rejects or conflicts. Retain generated outputs — never clean,
-revert, or delete them automatically. Any failed producing command, red final
-evidence, destructive cleanup, manual mutation, manual source edit,
-functional expansion, or out-of-scope work remains on its existing failure
-path. Findings are for the orchestrator and the user to act on.
+revert, delete, stage, or commit them automatically. A failed producing command
+is classified separately and is continuable only when corrected under the
+shared policy or proven eligible as a pre-existing/unrelated incident. Red
+final evidence, destructive cleanup, manual mutation, manual source edit,
+functional expansion, and other blocking deviations remain on the mandatory
+stop path. Findings are for the orchestrator and the user to act on.
 
 On `fail`, `not-verified`, incomplete task evidence, or red final evidence, do
 not invoke completion and report `completion: not-attempted` with no checkbox
@@ -154,11 +173,11 @@ include the conflict diagnostics, and do not claim or attempt to mark any task.
 
 Do not delegate. Return every Shared corrected-failure result field defined by
 the orchestrator's shared implementation-result policy; do not omit or
-reinterpret its
-ordered failed/correction/success evidence, equivalent-or-broader scope
-coverage, final relevant validation state, files touched, deviations, scope
-expansion, or out-of-scope evidence. Include generated output paths with
-their producing commands. Add verifier-specific
+reinterpret its ordered corrected-failure or pre-existing/unrelated incident
+evidence, relevant validation coverage, final relevant validation state, files
+touched, deviations, scope expansion, or out-of-scope evidence. Include benign
+local/output paths with their producing commands and canonical classification.
+Add verifier-specific
 `verdict` (`pass`, `fail`, or `not-verified`), per-task `evidence`, `completion`,
 `conflicts`, findings ordered by severity with file:line references, and the
 scenario→evidence coverage summary. Keep the result compact.
