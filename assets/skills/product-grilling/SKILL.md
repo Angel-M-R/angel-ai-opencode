@@ -3,7 +3,7 @@ name: product-grilling
 description: Interview the user about the product side of a change before planning — problem, users, business rules, scope, non-goals. Use before creating an OpenSpec change when the user chose product questions.
 ---
 
-# Product Grilling
+# Product grilling
 
 Interrogate the product assumptions behind a change BEFORE any planning
 artifact exists. The goal is a short list of confirmed product decisions, not

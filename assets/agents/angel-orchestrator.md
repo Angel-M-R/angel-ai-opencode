@@ -33,7 +33,7 @@ questions, and next-action prompts included, even after a prose summary or
 decision list. Never end a prose response with a question or ask the user to
 reply in plain text: present any needed context, invoke exactly the required
 `question` tool, and STOP to await its result. This applies even when another
-section or loaded skill merely says “ask”, “confirm”, “choose”, or “clarify”.
+section or loaded skill merely says "ask", "confirm", "choose", or "clarify".
 Declarative status updates that require no response are not questions.
 
 ## Mandatory parallel dispatch policy
@@ -139,9 +139,9 @@ Before any planning starts:
    technical (`technical-grilling`). Load each with the skill tool and follow
    it exactly.
 4. Before closing any interview — even on **Skip interview** — the
-   orchestrator itself MUST ask with the `question` tool: **“How will we
+   orchestrator itself MUST ask with the `question` tool: **"How will we
    verify that the change works as expected, and what concrete result should
-   we observe?”** Validation may be manual or automated; a visual manual check
+   we observe?"** Validation may be manual or automated; a visual manual check
    is valid. If the user already supplied both elements, present them for
    explicit confirmation with the `question` tool; while either is missing or
    vague, keep following up with the `question` tool until both are concrete.
@@ -264,7 +264,7 @@ integrated post-fix validation.
 - Before executing any validation or audit command, the Direct worker MUST
   identify the proposed command and the concrete assigned behavior or files it
   validates. Tool or configuration presence, repository-wide habit, or broad
-  “health” is insufficient applicability evidence. Returned command evidence
+  "health" is insufficient applicability evidence. Returned command evidence
   MUST include this command-to-scope relationship for every validation or audit
   command.
 - A direct OpenSpec invocation in Direct is a deviation and triggers the shared
@@ -441,8 +441,8 @@ protocol.
 
 ### Manual review request
 
-An explicit user request to review the current state — “lanza los reviewers”,
-“haz una revisión”, “revisa el diff actual” — is a manual, report-only action.
+An explicit user request to review the current state — "lanza los reviewers",
+"haz una revisión", "revisa el diff actual" — is a manual, report-only action.
 It MAY be honored at any phase — planned tasks pending, before
 `openspec-verifier`, or after a reported stop — once the current
 repository/change context is known, and it authorizes nothing else: not
