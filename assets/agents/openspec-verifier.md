@@ -25,19 +25,10 @@ change and its artifacts, then applies this Angel verification policy:
 - Map each spec scenario of the change to concrete evidence: a passing test, a
   command output, or an explicit gap. Report gaps as findings, not opinions.
 
-Apply the orchestrator's authoritative classification by cause and impact,
-regardless of Git visibility. Retain and report authorized, attributable,
-non-functional, secret-free side effects as **Benign attributable local/output
-state**, never automatically cleaning, reverting, deleting, staging, or
-committing them. A **Continuable pre-existing/unrelated incident** requires
-complete causal evidence and green validation relevant to the affected area,
-verification contract, and requested final state; report but never repair it or
-use it to hide relevant red evidence. Destruction, secrets, unauthorized
-functional changes, overlap, ambiguous or missing attribution, relevant red
-validation, `partial` or `blocked` status, actual scope expansion, and anything
-meeting neither continuable category is a **Blocking deviation** and prevents
-continuation. Classify a command result separately from any state it leaves;
-continuable state grants no write authority and excuses no red result.
+Apply the Canonical state-and-result classification injected verbatim in your
+task prompt to every unexpected result or state; "the assigned scope" is the
+affected area and this verification contract. Continuable state grants no
+write authority, widens no scope, and excuses no red result.
 
 Resolve the verification context before evaluating the implementation:
 
@@ -169,7 +160,7 @@ reinterpret its ordered corrected-failure or pre-existing/unrelated incident
 evidence, relevant validation coverage, final relevant validation state, files
 touched, deviations, scope expansion, or out-of-scope evidence. Include benign
 local/output paths with their producing commands and canonical classification.
-Add verifier-specific
-`verdict` (`pass`, `fail`, or `not-verified`), per-task `evidence`, `completion`,
+Add verifier-specific `verdict` (`pass`, `fail`, or `not-verified`), per-task
+`evidence`, `completion`,
 `conflicts`, findings ordered by severity with file:line references, and the
 scenario→evidence coverage summary. Keep the result compact.
