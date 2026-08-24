@@ -452,9 +452,8 @@ Invoke exactly the same ONE multi-select reviewer `question` as the automatic
 gate below — never infer the selection from the request's wording. Its options
 are **Security risk** / **Simplicity** / **Correctness** plus the route's
 mutually exclusive `None` option, with nothing preselected. Launch only the
-selected reviewers, in parallel, against the current staged, unstaged, and
-untracked non-ignored local changes; pass the confirmed Brief when one exists
-and identify the run as a manual review.
+selected reviewers, in parallel, under the Shared review protocol below; pass
+the confirmed Brief when one exists and identify the run as a manual review.
 
 Report manual results as `reviewed, not verified` unless a separate verifier
 result already proves verification. A manual review MUST NOT mark or unmark
@@ -477,10 +476,35 @@ automatically.
 The primary orchestrator, never a report-only reviewer, invokes ONE
 multi-select `question` with those options. Launch only the selected reviewers,
 in parallel. Give each the confirmed Brief as intent context and the route
-context, but inject no patch: each reviewer independently inspects the current
-staged, unstaged, and untracked non-ignored local changes via Git/Bash,
-excluding ignored files and secrets. The Brief informs intended behavior; it is
-not a boundary on supported findings. Reviewers remain report-only.
+context, inject no patch, and inject the Shared review protocol below verbatim.
+Reviewers remain report-only.
+
+**Shared review protocol (authoritative; inject verbatim into every reviewer
+prompt, manual or automatic).**
+
+- Use the confirmed Brief to understand intended behavior, not as a boundary
+  on what you may report. Review every supported issue in the local changes
+  even when the Brief did not mention it.
+- Discover the review scope independently through Git/Bash — never rely on an
+  orchestrator-supplied patch. Inspect staged changes (`git diff --cached`),
+  unstaged changes (`git diff`), and untracked non-ignored files
+  (`git ls-files --others --exclude-standard`), cross-checking with Git status
+  that all three categories were considered. Ignored files stay out of scope;
+  never read a secret or a read-denied path even when Git reports it.
+  Supporting repository context may be read as needed, but findings must be
+  grounded in concrete evidence from the local changes under review.
+- Triage: mark which of your categories the complete local-change scope
+  actually touches and evaluate ONLY those.
+- For each finding report `file:line`, `severity: BLOCKER | CRITICAL |
+  WARNING | SUGGESTION`, a concrete failure scenario for BLOCKER/CRITICAL,
+  whether it was introduced by this change or pre-existing (pre-existing is
+  informational, never blocking), the concrete evidence, and the smallest
+  behavior-preserving correction direction.
+- Return Markdown with numbered findings, or `No findings.` when clean. Never
+  apply fixes — report only; the user selects which findings get fixed.
+  Include a **Validation evidence** section listing every validation command
+  actually run with its exit code — with findings or `No findings.` — and
+  report non-zero exits without modifying files or attempting a fix.
 
 If every selected reviewer reports `No findings.`, close automatically (Direct:
 end the review; OpenSpec: proceed to archive) without an empty
