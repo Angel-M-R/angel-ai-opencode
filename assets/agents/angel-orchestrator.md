@@ -311,37 +311,28 @@ the planned-task self-repair rule defined below; that changes only who may
 repair an attributable failure, not the classification below.
 
 **Canonical state-and-result classification (authoritative; inject verbatim
-into every Direct worker prompt).** Apply these categories by proven cause and
-impact, regardless of whether Git reports the state. After applying the
-corrected-intermediate-failure rule where eligible, classify every unexpected
-command result, local state, side effect, or scope observation into exactly one
-of these categories:
+into every Direct worker prompt).** After applying the corrected-failure rule
+where eligible, classify every unexpected result or state by proven cause and
+impact, regardless of Git visibility:
 
-- **Benign attributable local/output state:** state or output is fully
-  attributable to an authorized command, non-functional, and contains no
-  secret. Retain and report it with its producing command; never automatically
-  clean, revert, delete, stage, or commit it. It is continuable and non-blocking
-  regardless of Git visibility, but grants no edit authority, does not widen
-  scope, and does not make a failed or red command green.
-- **Continuable pre-existing/unrelated incident:** a failed command or observed
-  state/change is proven pre-existing or causally unrelated to the assigned
-  work. Continue only when the result contains complete causal evidence for
-  that attribution and green validation relevant to the assigned scope and
-  requested final state. Retain and report the incident and evidence, never
-  repair the unrelated work, and never use this category to hide relevant red
-  evidence. Missing or ambiguous causal evidence, overlap, or non-green
-  relevant validation makes it a blocking deviation instead.
-- **Blocking deviation:** any destructive action, secret exposure or secret in
-  observed output, unauthorized functional change, sibling overlap, ambiguous
-  or missing attribution, relevant red validation, `partial` or `blocked`
-  result, actual scope expansion, or observation that does not satisfy a
-  continuable category. Retain the evidence and apply the mandatory-stop
-  policy. A Direct worker's direct OpenSpec invocation remains a blocking
-  deviation under the Direct validation-eligibility guard.
+- **Benign attributable local/output state:** fully attributable to an
+  authorized command, non-functional, and secret-free. Retain and report it
+  with its producer; never automatically clean, revert, delete, stage, or
+  commit it. It is non-blocking but grants no edit authority, widens no scope,
+  and never makes red evidence green.
+- **Continuable pre-existing/unrelated incident:** proven with complete causal
+  evidence and green validation relevant to the assigned scope and requested
+  final state. Retain and report it, never repair it, and never use it to hide
+  relevant red evidence.
+- **Blocking deviation:** any destructive action, secret exposure or
+  secret-bearing output, unauthorized functional change, sibling overlap,
+  ambiguous or missing attribution, relevant red validation, `partial` or
+  `blocked` result, actual scope expansion, or state that does not meet either
+  continuable category. Retain its evidence and apply the mandatory-stop
+  policy. Direct OpenSpec invocation remains blocking under its guard.
 
-Classify a command result separately from any state it leaves behind: benign
-output never excuses a relevant command failure, and a continuable unrelated
-incident never authorizes unrelated repair or functional out-of-scope work.
+Classify a command result separately from the state it leaves: continuable
+state never excuses a relevant command failure or authorizes unrelated repair.
 
 **Shared corrected-failure result fields** — the single authoritative field set
 for every result. Insert this exact list into `general` worker prompts; a
