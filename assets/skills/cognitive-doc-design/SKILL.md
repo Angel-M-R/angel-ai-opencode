@@ -7,7 +7,7 @@ metadata:
   version: "1.0"
 ---
 
-## When to Use
+## When to use
 
 Load this skill when creating or editing documentation that people need to understand quickly, retain, or use during review.
 
@@ -18,7 +18,7 @@ Use it especially for:
 - Architecture, workflow, or onboarding docs.
 - Any doc that currently feels long, dense, or hard to scan.
 
-## Critical Patterns
+## Critical patterns
 
 | Pattern | Rule |
 |---------|------|
@@ -29,7 +29,7 @@ Use it especially for:
 | Recognition over recall | Prefer tables, checklists, examples, and templates over prose that must be remembered. |
 | Review empathy | Design docs so reviewers can verify intent without reconstructing the whole story. |
 
-## Documentation Shape
+## Documentation shape
 
 Use this default structure unless the repo already provides a stronger template:
 
@@ -60,7 +60,7 @@ Use this default structure unless the repo already provides a stronger template:
 <Link or action that continues the workflow.>
 ```
 
-## PR and Review Docs
+## PR and review docs
 
 When documenting a PR, reduce reviewer burnout by making the review path explicit:
 
