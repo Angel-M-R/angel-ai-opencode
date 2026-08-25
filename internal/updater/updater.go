@@ -19,6 +19,9 @@ type Config struct {
 	Output            io.Writer
 	ManifestURL       string
 	Timeout           time.Duration
+	ArtifactTimeout   time.Duration
+	MaxManifestBytes  int64
+	MaxArtifactBytes  int64
 	OnUpdateAvailable func(Manifest) error
 }
 
@@ -30,6 +33,9 @@ type Updater struct {
 	output            io.Writer
 	manifestURL       string
 	timeout           time.Duration
+	artifactTimeout   time.Duration
+	maxManifestBytes  int64
+	maxArtifactBytes  int64
 	onUpdateAvailable func(Manifest) error
 }
 
@@ -61,6 +67,15 @@ func New(config Config) *Updater {
 	if config.Timeout == 0 {
 		config.Timeout = RequestTimeout
 	}
+	if config.ArtifactTimeout == 0 {
+		config.ArtifactTimeout = ArtifactRequestTimeout
+	}
+	if config.MaxManifestBytes <= 0 {
+		config.MaxManifestBytes = DefaultMaxManifestBytes
+	}
+	if config.MaxArtifactBytes <= 0 {
+		config.MaxArtifactBytes = DefaultMaxArtifactBytes
+	}
 	return &Updater{
 		http:              config.HTTP,
 		fileSystem:        config.FileSystem,
@@ -68,6 +83,9 @@ func New(config Config) *Updater {
 		output:            config.Output,
 		manifestURL:       config.ManifestURL,
 		timeout:           config.Timeout,
+		artifactTimeout:   config.ArtifactTimeout,
+		maxManifestBytes:  config.MaxManifestBytes,
+		maxArtifactBytes:  config.MaxArtifactBytes,
 		onUpdateAvailable: config.OnUpdateAvailable,
 	}
 }
@@ -78,7 +96,7 @@ func (updater *Updater) Check(ctx context.Context, currentVersion string) (Resul
 	if err != nil {
 		return Result{}, fmt.Errorf("invalid running version: %w", err)
 	}
-	manifest, err := fetchManifest(ctx, updater.http, updater.manifestURL, updater.timeout)
+	manifest, err := fetchManifest(ctx, updater.http, updater.manifestURL, updater.timeout, updater.maxManifestBytes)
 	if err != nil {
 		return Result{}, err
 	}

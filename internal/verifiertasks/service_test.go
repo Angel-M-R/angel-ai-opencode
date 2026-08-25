@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -108,6 +109,29 @@ func captureSnapshot(t *testing.T, fixture fixture) Snapshot {
 		t.Fatalf("capture result = %+v", result)
 	}
 	return *result.Snapshot
+}
+
+func TestSystemRunnerKeepsSuccessfulStderrOutOfStatusJSON(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not available")
+	}
+	output, exitCode, err := newExecRunner().Run(
+		context.Background(),
+		t.TempDir(),
+		shell,
+		"-c",
+		`printf '%s' '{"status":"done"}'; printf '%s' 'warning' >&2`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, want 0", exitCode)
+	}
+	if got, want := string(output), `{"status":"done"}`; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
 }
 
 func passingRequest(snapshot Snapshot) CompleteRequest {

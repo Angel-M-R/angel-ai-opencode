@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"angel-ai-opencode/internal/tui"
 	"angel-ai-opencode/internal/updater"
 	"angel-ai-opencode/internal/verifiertasks"
+	"github.com/charmbracelet/x/term"
 )
 
 //go:embed all:assets
@@ -43,15 +45,37 @@ type updatePolicy interface {
 	Run(currentVersion string, forced bool) error
 }
 
+var errInteractiveTerminalRequired = errors.New("interactive terminal required")
+
+type interactiveTerminalError struct {
+	streams []string
+}
+
+func (err *interactiveTerminalError) Error() string {
+	subject := strings.Join(err.streams, " and ")
+	verb := "is"
+	object := "a terminal"
+	if len(err.streams) > 1 {
+		verb = "are"
+		object = "terminals"
+	}
+	return fmt.Sprintf("interactive mode requires terminal input and output; %s %s not %s. Use --all for non-interactive installation", subject, verb, object)
+}
+
+func (err *interactiveTerminalError) Unwrap() error {
+	return errInteractiveTerminalRequired
+}
+
 type cliDependencies struct {
-	stdout                io.Writer
-	stdin                 io.Reader
-	runInstaller          func(rootOptions) error
-	newUpdatePolicy       func() updatePolicy
-	workingDirectory      func() (string, error)
-	captureVerifierTasks  func(context.Context, verifiertasks.ResolveRequest) (verifiertasks.Result, error)
-	completeVerifierTasks func(context.Context, verifiertasks.ResolveRequest, verifiertasks.CompleteRequest) (verifiertasks.Result, error)
-	runOpenSpecBootstrap  func(context.Context, openspecbootstrap.Request) (openspecbootstrap.Result, error)
+	stdout                   io.Writer
+	stdin                    io.Reader
+	checkInteractiveTerminal func() error
+	runInstaller             func(rootOptions) error
+	newUpdatePolicy          func() updatePolicy
+	workingDirectory         func() (string, error)
+	captureVerifierTasks     func(context.Context, verifiertasks.ResolveRequest) (verifiertasks.Result, error)
+	completeVerifierTasks    func(context.Context, verifiertasks.ResolveRequest, verifiertasks.CompleteRequest) (verifiertasks.Result, error)
+	runOpenSpecBootstrap     func(context.Context, openspecbootstrap.Request) (openspecbootstrap.Result, error)
 }
 
 func main() {
@@ -66,6 +90,9 @@ func defaultCLIDependencies() cliDependencies {
 	return cliDependencies{
 		stdout: os.Stdout,
 		stdin:  os.Stdin,
+		checkInteractiveTerminal: func() error {
+			return validateInteractiveTerminal(isTerminal(os.Stdin), isTerminal(os.Stdout))
+		},
 		runInstaller: func(options rootOptions) error {
 			return run(options.assetsDir, options.configDir, options.all, options.dryRun)
 		},
@@ -224,11 +251,35 @@ func runRootCommand(args []string, dependencies cliDependencies) error {
 	}
 
 	if !options.all {
+		if dependencies.checkInteractiveTerminal == nil {
+			return fmt.Errorf("interactive terminal check is unavailable")
+		}
+		if err := dependencies.checkInteractiveTerminal(); err != nil {
+			return err
+		}
 		if err := runUpdatePolicyFailOpen(false, dependencies); err != nil {
 			return err
 		}
 	}
 	return dependencies.runInstaller(options)
+}
+
+func isTerminal(file *os.File) bool {
+	return term.IsTerminal(file.Fd())
+}
+
+func validateInteractiveTerminal(stdinTTY, stdoutTTY bool) error {
+	var streams []string
+	if !stdinTTY {
+		streams = append(streams, "stdin")
+	}
+	if !stdoutTTY {
+		streams = append(streams, "stdout")
+	}
+	if len(streams) == 0 {
+		return nil
+	}
+	return &interactiveTerminalError{streams: streams}
 }
 
 func runVersionCommand(args []string, dependencies cliDependencies) error {

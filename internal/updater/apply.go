@@ -21,19 +21,19 @@ func (updater *Updater) apply(manifest Manifest) error {
 		return err
 	}
 
-	candidatePath, err := updater.downloadCandidate(manifest, executable)
+	candidatePath, candidateIdentity, err := updater.downloadCandidate(manifest, executable)
 	if err != nil {
 		return err
 	}
 	defer updater.fileSystem.Remove(candidatePath)
 
-	backupPath, err := updater.prepareBackup(executable)
+	backup, err := updater.prepareBackup(executable)
 	if err != nil {
 		return err
 	}
 
-	if err := updater.fileSystem.Rename(candidatePath, executable); err != nil {
-		if restoreErr := updater.fileSystem.Rename(backupPath, executable); restoreErr != nil {
+	if err := updater.publishCandidate(candidatePath, executable, candidateIdentity); err != nil {
+		if restoreErr := updater.restoreBackup(backup, executable); restoreErr != nil {
 			return fmt.Errorf("replacing executable: %w; restoring previous executable: %v", err, restoreErr)
 		}
 		return fmt.Errorf("replacing executable: %w", err)
@@ -42,7 +42,7 @@ func (updater *Updater) apply(manifest Manifest) error {
 	arguments := updater.process.Args()
 	environment := withRelaunchMarker(updater.process.Environ())
 	if err := updater.process.Exec(executable, arguments, environment); err != nil {
-		if restoreErr := updater.fileSystem.Rename(backupPath, executable); restoreErr != nil {
+		if restoreErr := updater.restoreBackup(backup, executable); restoreErr != nil {
 			return fmt.Errorf("relaunching replacement: %w; restoring previous executable: %v", err, restoreErr)
 		}
 		return fmt.Errorf("relaunching replacement: %w", err)
@@ -53,12 +53,22 @@ func (updater *Updater) apply(manifest Manifest) error {
 	return nil
 }
 
-func (updater *Updater) downloadCandidate(manifest Manifest, executable string) (candidatePath string, resultErr error) {
+type fileIdentity struct {
+	size   int64
+	digest string
+}
+
+type persistedFile struct {
+	path     string
+	identity fileIdentity
+}
+
+func (updater *Updater) downloadCandidate(manifest Manifest, executable string) (candidatePath string, identity fileIdentity, resultErr error) {
 	directory := filepath.Dir(executable)
 	base := filepath.Base(executable)
 	candidate, err := updater.fileSystem.CreateTemp(directory, "."+base+".update-*")
 	if err != nil {
-		return "", fmt.Errorf("creating update temporary file: %w", err)
+		return "", fileIdentity{}, fmt.Errorf("creating update temporary file: %w", err)
 	}
 	candidatePath = candidate.Name()
 	closed := false
@@ -71,82 +81,187 @@ func (updater *Updater) downloadCandidate(manifest Manifest, executable string) 
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), updater.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), updater.artifactTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, manifest.ArtifactURL, nil)
 	if err != nil {
-		return candidatePath, fmt.Errorf("creating artifact request: %w", err)
+		return candidatePath, fileIdentity{}, fmt.Errorf("creating artifact request: %w", err)
 	}
 	response, err := updater.http.Do(request)
 	if err != nil {
-		return candidatePath, fmt.Errorf("downloading update artifact: %w", err)
+		return candidatePath, fileIdentity{}, fmt.Errorf("downloading update artifact: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return candidatePath, fmt.Errorf("downloading update artifact: unexpected HTTP status %s", response.Status)
+		return candidatePath, fileIdentity{}, fmt.Errorf("downloading update artifact: unexpected HTTP status %s", response.Status)
+	}
+	if response.ContentLength > updater.maxArtifactBytes {
+		return candidatePath, fileIdentity{}, fmt.Errorf("downloading update artifact: response exceeds %d bytes", updater.maxArtifactBytes)
 	}
 
 	hash := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(candidate, hash), response.Body); err != nil {
-		return candidatePath, fmt.Errorf("downloading update artifact: %w", err)
+	written, err := copyAtMost(io.MultiWriter(candidate, hash), response.Body, updater.maxArtifactBytes)
+	if err != nil {
+		return candidatePath, fileIdentity{}, fmt.Errorf("downloading update artifact: %w", err)
+	}
+	if err := updater.fileSystem.Chmod(candidatePath, 0o755); err != nil {
+		return candidatePath, fileIdentity{}, fmt.Errorf("making update artifact executable: %w", err)
+	}
+	if err := candidate.Sync(); err != nil {
+		return candidatePath, fileIdentity{}, fmt.Errorf("synchronizing update temporary file: %w", err)
 	}
 	if err := candidate.Close(); err != nil {
-		return candidatePath, fmt.Errorf("closing update temporary file: %w", err)
+		return candidatePath, fileIdentity{}, fmt.Errorf("closing update temporary file: %w", err)
 	}
 	closed = true
 
 	actualDigest := hex.EncodeToString(hash.Sum(nil))
 	if actualDigest != manifest.SHA256 {
-		return candidatePath, fmt.Errorf("verifying update artifact: SHA-256 mismatch (got %s)", actualDigest)
+		return candidatePath, fileIdentity{}, fmt.Errorf("verifying update artifact: SHA-256 mismatch (got %s)", actualDigest)
 	}
-	if err := updater.fileSystem.Chmod(candidatePath, 0o755); err != nil {
-		return candidatePath, fmt.Errorf("making update artifact executable: %w", err)
+	identity, err = updater.readFileIdentity(candidatePath)
+	if err != nil {
+		return candidatePath, fileIdentity{}, fmt.Errorf("reading update artifact back from disk: %w", err)
 	}
-	return candidatePath, nil
+	if identity.size != written || identity.digest != manifest.SHA256 {
+		return candidatePath, fileIdentity{}, fmt.Errorf("verifying update artifact readback: got %d bytes with SHA-256 %s", identity.size, identity.digest)
+	}
+	return candidatePath, identity, nil
 }
 
-func (updater *Updater) prepareBackup(executable string) (backupPath string, resultErr error) {
+func (updater *Updater) prepareBackup(executable string) (backup persistedFile, resultErr error) {
 	info, err := updater.fileSystem.Stat(executable)
 	if err != nil {
-		return "", fmt.Errorf("reading executable permissions: %w", err)
+		return persistedFile{}, fmt.Errorf("reading executable permissions: %w", err)
 	}
 	source, err := updater.fileSystem.Open(executable)
 	if err != nil {
-		return "", fmt.Errorf("opening current executable: %w", err)
+		return persistedFile{}, fmt.Errorf("opening current executable: %w", err)
 	}
 	defer source.Close()
 
 	directory := filepath.Dir(executable)
 	base := filepath.Base(executable)
-	backup, err := updater.fileSystem.CreateTemp(directory, "."+base+".backup-*")
+	temporary, err := updater.fileSystem.CreateTemp(directory, "."+base+".backup-*")
 	if err != nil {
-		return "", fmt.Errorf("creating executable backup: %w", err)
+		return persistedFile{}, fmt.Errorf("creating executable backup: %w", err)
 	}
-	temporaryPath := backup.Name()
+	temporaryPath := temporary.Name()
 	closed := false
+	backupPath := updater.backupPath(executable)
+	landed := false
 	defer func() {
 		if !closed {
-			_ = backup.Close()
+			_ = temporary.Close()
 		}
 		_ = updater.fileSystem.Remove(temporaryPath)
+		if resultErr != nil && landed {
+			_ = updater.fileSystem.Remove(backupPath)
+		}
 	}()
 
-	if _, err := io.Copy(backup, source); err != nil {
-		return "", fmt.Errorf("copying executable backup: %w", err)
+	hash := sha256.New()
+	size, err := io.Copy(io.MultiWriter(temporary, hash), source)
+	if err != nil {
+		return persistedFile{}, fmt.Errorf("copying executable backup: %w", err)
 	}
-	if err := backup.Close(); err != nil {
-		return "", fmt.Errorf("closing executable backup: %w", err)
+	if err := updater.fileSystem.Chmod(temporaryPath, info.Mode().Perm()); err != nil {
+		return persistedFile{}, fmt.Errorf("preserving executable backup permissions: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		return persistedFile{}, fmt.Errorf("synchronizing executable backup: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return persistedFile{}, fmt.Errorf("closing executable backup: %w", err)
 	}
 	closed = true
-	if err := updater.fileSystem.Chmod(temporaryPath, info.Mode().Perm()); err != nil {
-		return "", fmt.Errorf("preserving executable backup permissions: %w", err)
+	expected := fileIdentity{size: size, digest: hex.EncodeToString(hash.Sum(nil))}
+	readback, err := updater.readFileIdentity(temporaryPath)
+	if err != nil {
+		return persistedFile{}, fmt.Errorf("reading executable backup back from disk: %w", err)
+	}
+	if readback != expected {
+		return persistedFile{}, fmt.Errorf("executable backup readback mismatch")
 	}
 
-	backupPath = updater.backupPath(executable)
 	if err := updater.fileSystem.Rename(temporaryPath, backupPath); err != nil {
-		return "", fmt.Errorf("preparing executable backup: %w", err)
+		return persistedFile{}, fmt.Errorf("preparing executable backup: %w", err)
 	}
-	return backupPath, nil
+	landed = true
+	if err := updater.fileSystem.SyncDir(directory); err != nil {
+		return persistedFile{}, fmt.Errorf("synchronizing executable backup directory: %w", err)
+	}
+	readback, err = updater.readFileIdentity(backupPath)
+	if err != nil {
+		return persistedFile{}, fmt.Errorf("confirming executable backup: %w", err)
+	}
+	if readback != expected {
+		return persistedFile{}, fmt.Errorf("executable backup published with unexpected bytes")
+	}
+	return persistedFile{path: backupPath, identity: expected}, nil
+}
+
+func (updater *Updater) publishCandidate(candidatePath, executable string, expected fileIdentity) error {
+	if err := updater.fileSystem.Rename(candidatePath, executable); err != nil {
+		return err
+	}
+	if err := updater.fileSystem.SyncDir(filepath.Dir(executable)); err != nil {
+		return fmt.Errorf("synchronizing executable directory: %w", err)
+	}
+	actual, err := updater.readFileIdentity(executable)
+	if err != nil {
+		return fmt.Errorf("reading replacement back from disk: %w", err)
+	}
+	if actual != expected {
+		return fmt.Errorf("replacement readback mismatch: got %d bytes with SHA-256 %s", actual.size, actual.digest)
+	}
+	return nil
+}
+
+func (updater *Updater) restoreBackup(backup persistedFile, executable string) error {
+	if err := updater.fileSystem.Rename(backup.path, executable); err != nil {
+		return err
+	}
+	if err := updater.fileSystem.SyncDir(filepath.Dir(executable)); err != nil {
+		return fmt.Errorf("synchronizing restored executable directory: %w", err)
+	}
+	actual, err := updater.readFileIdentity(executable)
+	if err != nil {
+		return fmt.Errorf("reading restored executable back from disk: %w", err)
+	}
+	if actual != backup.identity {
+		return fmt.Errorf("restored executable readback mismatch")
+	}
+	return nil
+}
+
+func (updater *Updater) readFileIdentity(path string) (fileIdentity, error) {
+	file, err := updater.fileSystem.Open(path)
+	if err != nil {
+		return fileIdentity{}, err
+	}
+	hash := sha256.New()
+	size, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if copyErr != nil {
+		return fileIdentity{}, copyErr
+	}
+	if closeErr != nil {
+		return fileIdentity{}, closeErr
+	}
+	return fileIdentity{size: size, digest: hex.EncodeToString(hash.Sum(nil))}, nil
+}
+
+func copyAtMost(destination io.Writer, source io.Reader, maxBytes int64) (int64, error) {
+	limited := &io.LimitedReader{R: source, N: maxBytes + 1}
+	written, err := io.Copy(destination, limited)
+	if err != nil {
+		return written, err
+	}
+	if written > maxBytes {
+		return written, fmt.Errorf("response exceeds %d bytes", maxBytes)
+	}
+	return written, nil
 }
 
 func (updater *Updater) completeRelaunch(currentVersion string, forced bool) error {
@@ -154,7 +269,11 @@ func (updater *Updater) completeRelaunch(currentVersion string, forced bool) err
 	if err != nil {
 		return updater.warn("update cleanup failed: %v", err)
 	}
-	if err := updater.fileSystem.Remove(updater.backupPath(executable)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := updater.fileSystem.Remove(updater.backupPath(executable)); err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return updater.warn("update cleanup failed: %v", err)
+		}
+	} else if err := updater.fileSystem.SyncDir(filepath.Dir(executable)); err != nil {
 		return updater.warn("update cleanup failed: %v", err)
 	}
 	if forced {
