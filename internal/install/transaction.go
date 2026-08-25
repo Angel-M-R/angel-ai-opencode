@@ -2,6 +2,7 @@ package install
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -101,6 +102,22 @@ func (entry *transactionEntry) verifyExpectation(snapshot fileSnapshot, phase st
 		readErr = os.ErrNotExist
 	}
 	return verifyFileExpectation(entry.file.path, content, readErr, entry.expectation, true, phase)
+}
+
+// publishedDigests reports the bytes each managed destination holds as this
+// transaction completed: the readback-verified published content for written
+// entries, the before-image for entries left unchanged. Computed from the
+// in-memory transaction, it cannot observe writes by any later process.
+func (transaction *installationTransaction) publishedDigests() map[string]string {
+	digests := make(map[string]string, len(transaction.entries))
+	for _, entry := range transaction.entries {
+		content := entry.before.content
+		if entry.published {
+			content = entry.file.content
+		}
+		digests[entry.file.path] = fmt.Sprintf("%x", sha256.Sum256(content))
+	}
+	return digests
 }
 
 func (transaction *installationTransaction) apply() ([]fileWriteResult, error) {

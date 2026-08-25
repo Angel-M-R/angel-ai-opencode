@@ -63,7 +63,7 @@ func load(configDir string) (state, error) {
 	if err != nil {
 		return state{}, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	limited := io.LimitReader(file, maxStateBytes+1)
 	raw, err := io.ReadAll(limited)

@@ -466,3 +466,74 @@ func linesContain(lines []string, values ...string) bool {
 	}
 	return false
 }
+
+func TestDoctorAndSyncSurviveWholeItemRetirement(t *testing.T) {
+	assetRoot := t.TempDir()
+	target := t.TempDir()
+	writeAsset(t, assetRoot, "agents/kept.md", "kept\n")
+	writeAsset(t, assetRoot, "agents/retired.md", "retired\n")
+	request := install.InstallationRequest{
+		Items: []catalog.Item{
+			{Name: "kept", Source: "agents/kept.md", Dest: "agents/kept.md", Kind: catalog.CopyFile},
+			{Name: "retired", Source: "agents/retired.md", Dest: "agents/retired.md", Kind: catalog.CopyFile},
+		},
+		Extras: map[string]bool{}, Assets: assetfs.Directory(assetRoot), ConfigDir: target,
+	}
+	if _, err := Apply(request); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(assetRoot, "agents", "retired.md")); err != nil {
+		t.Fatal(err)
+	}
+	source := assetfs.Directory(assetRoot)
+
+	report, err := Doctor(source, target)
+	if err != nil {
+		t.Fatalf("doctor after whole-item retirement: %v", err)
+	}
+	if !hasFinding(report, FindingRetiredFile, "agents/retired.md") {
+		t.Fatalf("retired item file not identified: %+v", report)
+	}
+	_, err = Sync(source, target, false)
+	var drift *DriftError
+	if !errors.As(err, &drift) || !findingSliceContains(drift.Findings, FindingRetiredFile, "agents/retired.md") {
+		t.Fatalf("sync error = %v", err)
+	}
+	retiredContent, readErr := os.ReadFile(filepath.Join(target, "agents", "retired.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(retiredContent) != "retired\n" {
+		t.Fatalf("retired item file changed: %q", retiredContent)
+	}
+
+	if err := os.Remove(filepath.Join(target, "agents", "retired.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(source, target, false); err != nil {
+		t.Fatalf("sync after removing retired item file: %v", err)
+	}
+	updated, err := load(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range updated.Files {
+		if file.Path == "agents/retired.md" {
+			t.Fatalf("retired item file remained in state: %+v", updated.Files)
+		}
+	}
+	for _, category := range updated.Selection.Categories {
+		for _, source := range category.Sources {
+			if source == "agents/retired.md" {
+				t.Fatalf("retired item remained selected: %+v", updated.Selection)
+			}
+		}
+	}
+	report, err = Doctor(source, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Healthy {
+		t.Fatalf("doctor after resolving retired item = %+v", report)
+	}
+}
