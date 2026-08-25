@@ -1,6 +1,6 @@
-name: Stable macOS Apple Silicon Release
+name: Stable Release
 
-run-name: Release ${{ github.ref_name }} for macOS Apple Silicon
+run-name: Release ${{ github.ref_name }} for macOS Apple Silicon and Linux
 
 on:
   push:
@@ -62,7 +62,11 @@ jobs:
   installer-integration:
     name: Installer integration suite
     needs: validate-tag
-    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Run installer integration tests
@@ -107,7 +111,7 @@ jobs:
           printf '%s  %s\n' "${digest}" "${ARTIFACT_NAME}" >"dist/${ARTIFACT_NAME}.sha256"
           artifact_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ARTIFACT_NAME}"
           printf '{"version":"%s","artifact_url":"%s","sha256":"%s"}\n' \
-            "${GITHUB_REF_NAME}" "${artifact_url}" "${digest}" >dist/manifest.json
+            "${GITHUB_REF_NAME}" "${artifact_url}" "${digest}" >dist/manifest-darwin-arm64.json
       - name: Upload exact release files
         uses: actions/upload-artifact@v4
         with:
@@ -115,7 +119,71 @@ jobs:
           path: |
             dist/${{ env.ARTIFACT_NAME }}
             dist/${{ env.ARTIFACT_NAME }}.sha256
-            dist/manifest.json
+            dist/manifest-darwin-arm64.json
+          if-no-files-found: error
+          retention-days: 1
+
+  build-linux:
+    name: Build Linux ${{ matrix.goarch }} artifact
+    needs:
+      - validate-tag
+      - unit
+      - updater-integration
+      - installer-integration
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+    env:
+      ARTIFACT_NAME: angel-ai-linux-${{ matrix.goarch }}
+      MANIFEST_NAME: manifest-linux-${{ matrix.goarch }}.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the self-contained artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} go build \
+            -trimpath \
+            -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o "dist/${ARTIFACT_NAME}" \
+            .
+          chmod 0755 "dist/${ARTIFACT_NAME}"
+      - name: Verify artifact format and injected version
+        shell: bash
+        run: |
+          set -euo pipefail
+          format=$(file "dist/${ARTIFACT_NAME}")
+          if [ "${{ matrix.goarch }}" = "amd64" ]; then
+            [[ "${format}" == *"ELF 64-bit"*"x86-64"* ]]
+            reported_version=$("dist/${ARTIFACT_NAME}" version)
+            test "${reported_version}" = "${GITHUB_REF_NAME}"
+          else
+            [[ "${format}" == *"ELF 64-bit"*"ARM aarch64"* ]]
+          fi
+      - name: Generate checksum and latest manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest=$(sha256sum "dist/${ARTIFACT_NAME}" | cut -d ' ' -f 1)
+          printf '%s  %s\n' "${digest}" "${ARTIFACT_NAME}" >"dist/${ARTIFACT_NAME}.sha256"
+          artifact_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ARTIFACT_NAME}"
+          printf '{"version":"%s","artifact_url":"%s","sha256":"%s"}\n' \
+            "${GITHUB_REF_NAME}" "${artifact_url}" "${digest}" >"dist/${MANIFEST_NAME}"
+      - name: Upload exact release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-release-files-linux-${{ matrix.goarch }}
+          path: |
+            dist/${{ env.ARTIFACT_NAME }}
+            dist/${{ env.ARTIFACT_NAME }}.sha256
+            dist/${{ env.MANIFEST_NAME }}
           if-no-files-found: error
           retention-days: 1
 
@@ -182,6 +250,7 @@ jobs:
       - updater-integration
       - installer-integration
       - build
+      - build-linux
       - smoke
     if: >-
       ${{ always() &&
@@ -190,6 +259,7 @@ jobs:
           needs.updater-integration.result == 'success' &&
           needs.installer-integration.result == 'success' &&
           needs.build.result == 'success' &&
+          needs.build-linux.result == 'success' &&
           needs.smoke.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -198,18 +268,33 @@ jobs:
       - name: Download validated release files
         uses: actions/download-artifact@v4
         with:
-          name: stable-release-files
+          pattern: stable-release-files*
           path: dist
+      - name: Flatten artifact directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv dist/stable-release-files/* dist/
+          rmdir dist/stable-release-files
+          for directory in dist/stable-release-files-*; do
+            mv "${directory}"/* dist/
+            rmdir "${directory}"
+          done
       - name: Revalidate release files
         shell: bash
         run: |
           set -euo pipefail
           cd dist
-          sha256sum -c "${ARTIFACT_NAME}.sha256"
-          digest=$(sha256sum "${ARTIFACT_NAME}" | cut -d ' ' -f 1)
+          for artifact_name in angel-ai-darwin-arm64 angel-ai-linux-amd64 angel-ai-linux-arm64; do
+            sha256sum -c "${artifact_name}.sha256"
+            manifest_name="${artifact_name/angel-ai-/manifest-}.json"
+            grep -Fq "\"version\":\"${GITHUB_REF_NAME}\"" "${manifest_name}"
+            grep -Fq "\"artifact_url\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${artifact_name}\"" "${manifest_name}"
+            expected_digest=$(cut -d ' ' -f 1 "${artifact_name}.sha256")
+            grep -Fq "\"sha256\":\"${expected_digest}\"" "${manifest_name}"
+          done
+          cp manifest-darwin-arm64.json manifest.json
           grep -Fq "\"version\":\"${GITHUB_REF_NAME}\"" manifest.json
-          grep -Fq "\"artifact_url\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ARTIFACT_NAME}\"" manifest.json
-          grep -Fq "\"sha256\":\"${digest}\"" manifest.json
       - name: Publish release files and generated notes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -217,12 +302,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd dist
           gh release create "${GITHUB_REF_NAME}" \
-            "dist/${ARTIFACT_NAME}" \
-            "dist/${ARTIFACT_NAME}.sha256" \
-            "dist/manifest.json" \
+            angel-ai-darwin-arm64 \
+            angel-ai-darwin-arm64.sha256 \
+            angel-ai-linux-amd64 \
+            angel-ai-linux-amd64.sha256 \
+            angel-ai-linux-arm64 \
+            angel-ai-linux-arm64.sha256 \
+            manifest-darwin-arm64.json \
+            manifest-linux-amd64.json \
+            manifest-linux-arm64.json \
+            manifest.json \
             --verify-tag \
             --title "${GITHUB_REF_NAME}" \
-            --notes "macOS Apple Silicon only. This artifact is not Apple signed or notarized." \
+            --notes "macOS Apple Silicon and Linux (amd64 and arm64). Artifacts are not Apple signed or notarized." \
             --generate-notes \
             --latest

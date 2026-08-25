@@ -1,6 +1,7 @@
 package install
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -468,11 +469,18 @@ func packageRegistrationProbeResult(
 	}
 }
 
+// decodeLeadingJSONValue reads the first JSON value from command output and
+// ignores any trailing non-JSON chatter, such as npm warnings appended to the
+// buffer after a failed command's stdout.
+func decodeLeadingJSONValue(output []byte, target any) error {
+	return json.NewDecoder(bytes.NewReader(output)).Decode(target)
+}
+
 func parseNPMPackageRegistration(output []byte, packageName string) (bool, error) {
 	var listing *struct {
 		Dependencies map[string]json.RawMessage `json:"dependencies"`
 	}
-	if err := json.Unmarshal(output, &listing); err != nil {
+	if err := decodeLeadingJSONValue(output, &listing); err != nil {
 		return false, fmt.Errorf("invalid npm package-list JSON: %w", err)
 	}
 	if listing == nil {
@@ -494,7 +502,7 @@ func parsePNPMPackageRegistration(output []byte, packageName string) (bool, erro
 		DevDependencies      map[string]json.RawMessage `json:"devDependencies"`
 		OptionalDependencies map[string]json.RawMessage `json:"optionalDependencies"`
 	}
-	if err := json.Unmarshal(output, &listings); err != nil {
+	if err := decodeLeadingJSONValue(output, &listings); err != nil {
 		return false, fmt.Errorf("invalid pnpm package-list JSON: %w", err)
 	}
 	if listings == nil {
@@ -539,7 +547,7 @@ func probeRegistryLatestVersion(
 		}
 	}
 	var rawVersion string
-	if err := json.Unmarshal(output, &rawVersion); err != nil || strings.TrimSpace(rawVersion) == "" {
+	if err := decodeLeadingJSONValue(output, &rawVersion); err != nil || strings.TrimSpace(rawVersion) == "" {
 		detail := "registry latest response did not contain a JSON version string"
 		if err != nil {
 			detail = fmt.Sprintf("invalid registry latest JSON: %v", err)
