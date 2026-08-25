@@ -3,6 +3,7 @@ package install
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -83,12 +84,31 @@ func PlanInstallation(request InstallationRequest) ([]string, error) {
 
 // ApplyInstallation validates the complete desired state before performing any
 // package installation or file write, then applies only changed files.
-func ApplyInstallation(request InstallationRequest) ([]string, error) {
+func ApplyInstallation(request InstallationRequest) (done []string, resultErr error) {
 	if err := preflightSelectedExtras(request.Extras, systemGlobalCLICommands.lookPath); err != nil {
+		return nil, err
+	}
+	lease, err := acquireInstallationLock(request.ConfigDir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := lease.release(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("releasing installation lock: %w", err))
+		}
+	}()
+	// Bind every validation and write to the canonical root whose lock we hold.
+	// Re-resolving request.ConfigDir later could adopt a retargeted symlink while
+	// still holding the old root's lock.
+	allowlist, err := newLockedManagedPathAllowlist(request.ConfigDir, lease.target)
+	if err != nil {
 		return nil, err
 	}
 	prepared, err := prepareInstallationForApply(request)
 	if err != nil {
+		return nil, err
+	}
+	if err := validatePreparedFiles(allowlist, prepared.files); err != nil {
 		return nil, err
 	}
 	snapshot, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands)
@@ -96,26 +116,39 @@ func ApplyInstallation(request InstallationRequest) ([]string, error) {
 		return nil, err
 	}
 	reprepareAfterCLIs := len(snapshot.inspections) > 0
-	var done []string
+	externalEffects := false
 	for _, inspection := range snapshot.inspections {
+		mayChangePackageManager := inspection.disposition == globalCLIInstall ||
+			inspection.disposition == globalCLIOutdated
 		line, err := applyGlobalCLIInspection(inspection, snapshot.manager, systemGlobalCLICommands)
 		if err != nil {
-			return done, err
+			return done, withExternalEffectsNotice(err, externalEffects || mayChangePackageManager)
+		}
+		if mayChangePackageManager {
+			externalEffects = true
+			line += " [efecto externo, fuera del rollback de archivos]"
 		}
 		done = append(done, line)
 	}
 	if reprepareAfterCLIs {
 		prepared, err = prepareInstallationForApply(request)
 		if err != nil {
-			return done, err
+			return done, withExternalEffectsNotice(err, externalEffects)
+		}
+		if err := validatePreparedFiles(allowlist, prepared.files); err != nil {
+			return done, withExternalEffectsNotice(err, externalEffects)
 		}
 	}
-	for _, file := range prepared.files {
-		expectation, guarded := request.FileExpectations[file.path]
-		result, err := reconcileFile(file, expectation, guarded)
-		if err != nil {
-			return done, err
-		}
+	transaction, err := newInstallationTransaction(allowlist, prepared.files, request.FileExpectations)
+	if err != nil {
+		return done, withExternalEffectsNotice(err, externalEffects)
+	}
+	results, err := transaction.apply()
+	if err != nil {
+		return done, withExternalEffectsNotice(err, externalEffects)
+	}
+	for index, file := range prepared.files {
+		result := results[index]
 		done = append(done, fileResultLines(file.path, result)...)
 	}
 	return done, nil
@@ -140,6 +173,13 @@ func ManagedFilePaths(request InstallationRequest) ([]string, error) {
 	}
 	sort.Strings(paths)
 	return paths, nil
+}
+
+func withExternalEffectsNotice(err error, externalEffects bool) error {
+	if err == nil || !externalEffects {
+		return err
+	}
+	return fmt.Errorf("%w; external package-manager effects were not reverted", err)
 }
 
 func (file preparedFile) contentMatches(content []byte) bool {

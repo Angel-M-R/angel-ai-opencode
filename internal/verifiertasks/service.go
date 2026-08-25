@@ -9,14 +9,20 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
+	"time"
+
+	"angel-ai-opencode/internal/commandrunner"
 )
 
-const snapshotVersion = 1
+const (
+	snapshotVersion    = 1
+	commandTimeout     = 30 * time.Second
+	commandOutputLimit = 1 << 20
+)
 
 type ResolveRequest struct {
 	Change           string `json:"change"`
@@ -82,20 +88,20 @@ type CommandRunner interface {
 	Run(context.Context, string, string, ...string) ([]byte, int, error)
 }
 
-type execRunner struct{}
+type execRunner struct {
+	runner *commandrunner.Runner
+}
 
-func (execRunner) Run(ctx context.Context, directory, name string, args ...string) ([]byte, int, error) {
-	command := exec.CommandContext(ctx, name, args...)
-	command.Dir = directory
-	output, err := command.CombinedOutput()
+func newExecRunner() execRunner {
+	return execRunner{runner: commandrunner.New(commandTimeout, commandOutputLimit)}
+}
+
+func (runner execRunner) Run(ctx context.Context, directory, name string, args ...string) ([]byte, int, error) {
+	result, err := runner.runner.RunProject(ctx, directory, name, args...)
 	if err == nil {
-		return output, 0, nil
+		return result.Stdout, result.ExitCode, nil
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return output, exitErr.ExitCode(), err
-	}
-	return output, -1, err
+	return result.DiagnosticOutput(), result.ExitCode, err
 }
 
 type Service struct {
@@ -125,7 +131,7 @@ func newStateConflictError(format string, arguments ...any) error {
 var errConcurrentCommit = errors.New("tasks.md changed during commit preparation")
 
 func NewService() *Service {
-	return &Service{runner: execRunner{}}
+	return &Service{runner: newExecRunner()}
 }
 
 func (service *Service) Capture(ctx context.Context, request ResolveRequest) (Result, error) {

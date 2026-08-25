@@ -13,13 +13,17 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 type integrationFileSystem struct {
 	FileSystem
 	executable      string
 	replaceThenFail bool
+	replacementNoOp bool
 	replacementSeen bool
+	failReplaceSync bool
+	syncedDirs      []string
 }
 
 func (fileSystem *integrationFileSystem) Executable() (string, error) {
@@ -27,14 +31,29 @@ func (fileSystem *integrationFileSystem) Executable() (string, error) {
 }
 
 func (fileSystem *integrationFileSystem) Rename(oldPath, newPath string) error {
-	if fileSystem.replaceThenFail && !fileSystem.replacementSeen && newPath == fileSystem.executable && strings.Contains(filepath.Base(oldPath), ".update-") {
+	isReplacement := !fileSystem.replacementSeen && newPath == fileSystem.executable && strings.Contains(filepath.Base(oldPath), ".update-")
+	if isReplacement {
 		fileSystem.replacementSeen = true
+	}
+	if fileSystem.replacementNoOp && isReplacement {
+		return nil
+	}
+	if fileSystem.replaceThenFail && isReplacement {
 		if err := fileSystem.FileSystem.Rename(oldPath, newPath); err != nil {
 			return err
 		}
 		return errors.New("injected replacement failure")
 	}
 	return fileSystem.FileSystem.Rename(oldPath, newPath)
+}
+
+func (fileSystem *integrationFileSystem) SyncDir(path string) error {
+	fileSystem.syncedDirs = append(fileSystem.syncedDirs, path)
+	if fileSystem.failReplaceSync && fileSystem.replacementSeen {
+		fileSystem.failReplaceSync = false
+		return errors.New("injected directory sync failure")
+	}
+	return fileSystem.FileSystem.SyncDir(path)
 }
 
 type recordingProcess struct {
@@ -103,6 +122,75 @@ func TestUpdaterRejectsChecksumMismatchAndCleansTemporaryState(t *testing.T) {
 	}
 }
 
+func TestUpdaterRejectsOversizedArtifactAndCleansTemporaryState(t *testing.T) {
+	oldBinary := []byte("old executable")
+	newBinary := []byte("new executable")
+	executable := temporaryExecutable(t, oldBinary)
+	server, client, manifestURL := updateFixture(t, newBinary, "")
+	defer server.Close()
+
+	process := &recordingProcess{args: []string{"angel-ai"}}
+	var output bytes.Buffer
+	updater := New(Config{
+		HTTP:             client,
+		FileSystem:       &integrationFileSystem{FileSystem: osFileSystem{}, executable: executable},
+		Process:          process,
+		Output:           &output,
+		ManifestURL:      manifestURL,
+		MaxArtifactBytes: int64(len(newBinary) - 1),
+	})
+	if err := updater.Run("v1.0.0", false); err != nil {
+		t.Fatal(err)
+	}
+
+	assertExecutableBytes(t, executable, oldBinary)
+	assertOnlyExecutableRemains(t, executable)
+	if process.execCalls != 0 {
+		t.Fatalf("exec calls = %d, want 0", process.execCalls)
+	}
+	if !strings.Contains(output.String(), "warning:") || !strings.Contains(output.String(), "exceeds") {
+		t.Fatalf("warning output = %q", output.String())
+	}
+}
+
+func TestUpdaterArtifactRequestUsesDedicatedTimeout(t *testing.T) {
+	oldBinary := []byte("old executable")
+	newBinary := []byte("new executable")
+	executable := temporaryExecutable(t, oldBinary)
+	server, client, manifestURL := updateFixture(t, newBinary, "")
+	defer server.Close()
+
+	const artifactTimeout = 15 * time.Second
+	artifactRequestSeen := false
+	wrappedClient := httpClientFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path == "/angel-ai" {
+			artifactRequestSeen = true
+			deadline, ok := request.Context().Deadline()
+			if !ok {
+				t.Fatal("artifact request has no deadline")
+			}
+			remaining := time.Until(deadline)
+			if remaining < artifactTimeout-time.Second || remaining > artifactTimeout+time.Second {
+				t.Fatalf("artifact request deadline remaining = %v, want %v", remaining, artifactTimeout)
+			}
+		}
+		return client.Do(request)
+	})
+	updater := New(Config{
+		HTTP:            wrappedClient,
+		FileSystem:      &integrationFileSystem{FileSystem: osFileSystem{}, executable: executable},
+		Process:         &recordingProcess{args: []string{"angel-ai"}},
+		ManifestURL:     manifestURL,
+		ArtifactTimeout: artifactTimeout,
+	})
+	if err := updater.Run("v1.0.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if !artifactRequestSeen {
+		t.Fatal("artifact request was not observed")
+	}
+}
+
 func TestUpdaterAtomicallyReplacesAndRelaunchesWithOriginalProcessState(t *testing.T) {
 	oldBinary := []byte("old executable")
 	newBinary := []byte("new executable")
@@ -129,6 +217,9 @@ func TestUpdaterAtomicallyReplacesAndRelaunchesWithOriginalProcessState(t *testi
 	}
 
 	assertExecutableBytes(t, executable, newBinary)
+	if len(fileSystem.syncedDirs) < 2 {
+		t.Fatalf("synchronized directories = %v, want backup and replacement syncs", fileSystem.syncedDirs)
+	}
 	info, err := os.Stat(executable)
 	if err != nil {
 		t.Fatal(err)
@@ -175,6 +266,76 @@ func TestUpdaterAtomicallyReplacesAndRelaunchesWithOriginalProcessState(t *testi
 		t.Fatalf("backup remains after relaunch cleanup: %v", err)
 	}
 	assertExecutableBytes(t, executable, newBinary)
+}
+
+func TestUpdaterDetectsReplacementReadbackMismatchAndRestoresCurrentExecutable(t *testing.T) {
+	oldBinary := []byte("old executable")
+	newBinary := []byte("new executable")
+	executable := temporaryExecutable(t, oldBinary)
+	server, client, manifestURL := updateFixture(t, newBinary, "")
+	defer server.Close()
+
+	fileSystem := &integrationFileSystem{
+		FileSystem:      osFileSystem{},
+		executable:      executable,
+		replacementNoOp: true,
+	}
+	process := &recordingProcess{args: []string{"angel-ai"}}
+	var output bytes.Buffer
+	updater := New(Config{
+		HTTP:        client,
+		FileSystem:  fileSystem,
+		Process:     process,
+		Output:      &output,
+		ManifestURL: manifestURL,
+	})
+	if err := updater.Run("v1.0.0", false); err != nil {
+		t.Fatal(err)
+	}
+
+	assertExecutableBytes(t, executable, oldBinary)
+	assertOnlyExecutableRemains(t, executable)
+	if process.execCalls != 0 {
+		t.Fatalf("exec calls = %d, want 0", process.execCalls)
+	}
+	if !strings.Contains(output.String(), "replacement readback mismatch") {
+		t.Fatalf("warning output = %q", output.String())
+	}
+}
+
+func TestUpdaterRestoresCurrentExecutableWhenReplacementDirectorySyncFails(t *testing.T) {
+	oldBinary := []byte("old executable")
+	newBinary := []byte("new executable")
+	executable := temporaryExecutable(t, oldBinary)
+	server, client, manifestURL := updateFixture(t, newBinary, "")
+	defer server.Close()
+
+	fileSystem := &integrationFileSystem{
+		FileSystem:      osFileSystem{},
+		executable:      executable,
+		failReplaceSync: true,
+	}
+	process := &recordingProcess{args: []string{"angel-ai"}}
+	var output bytes.Buffer
+	updater := New(Config{
+		HTTP:        client,
+		FileSystem:  fileSystem,
+		Process:     process,
+		Output:      &output,
+		ManifestURL: manifestURL,
+	})
+	if err := updater.Run("v1.0.0", false); err != nil {
+		t.Fatal(err)
+	}
+
+	assertExecutableBytes(t, executable, oldBinary)
+	assertOnlyExecutableRemains(t, executable)
+	if process.execCalls != 0 {
+		t.Fatalf("exec calls = %d, want 0", process.execCalls)
+	}
+	if !strings.Contains(output.String(), "synchronizing executable directory") {
+		t.Fatalf("warning output = %q", output.String())
+	}
 }
 
 func TestUpdaterRelaunchMarkerCompletesAutomaticTUIFlowWithoutLooping(t *testing.T) {

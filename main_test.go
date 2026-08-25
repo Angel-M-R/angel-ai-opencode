@@ -54,6 +54,10 @@ func TestRunCLINoArgumentsChecksForUpdatesBeforeTUI(t *testing.T) {
 
 	err := runCLI(nil, cliDependencies{
 		stdout: &bytes.Buffer{},
+		checkInteractiveTerminal: func() error {
+			events = append(events, "terminal")
+			return nil
+		},
 		runInstaller: func(options rootOptions) error {
 			events = append(events, "installer")
 			gotOptions = options
@@ -67,7 +71,7 @@ func TestRunCLINoArgumentsChecksForUpdatesBeforeTUI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(events, []string{"construct-update-policy", "update", "installer"}) {
+	if !reflect.DeepEqual(events, []string{"terminal", "construct-update-policy", "update", "installer"}) {
 		t.Fatalf("dispatch events = %v", events)
 	}
 	if !reflect.DeepEqual(policy.calls, []updatePolicyCall{{version: "v0.1.0", forced: false}}) {
@@ -85,7 +89,8 @@ func TestRunCLIAutomaticUpdateFailureWarnsAndContinuesTUI(t *testing.T) {
 	policy := &recordedUpdatePolicy{err: errors.New("offline")}
 
 	err := runCLI(nil, cliDependencies{
-		stdout: &output,
+		stdout:                   &output,
+		checkInteractiveTerminal: func() error { return nil },
 		runInstaller: func(rootOptions) error {
 			installerCalls++
 			return nil
@@ -143,7 +148,8 @@ func TestRunCLIPreservesRootFlags(t *testing.T) {
 			var got rootOptions
 
 			err := runCLI(test.args, cliDependencies{
-				stdout: &bytes.Buffer{},
+				stdout:                   &bytes.Buffer{},
+				checkInteractiveTerminal: func() error { return nil },
 				runInstaller: func(options rootOptions) error {
 					installerCalls++
 					got = options
@@ -174,6 +180,130 @@ func TestRunCLIPreservesRootFlags(t *testing.T) {
 			}
 			if !reflect.DeepEqual(policy.calls, wantPolicyCalls) {
 				t.Fatalf("update calls = %#v, want %#v", policy.calls, wantPolicyCalls)
+			}
+		})
+	}
+}
+
+func TestRunCLIRejectsNonTerminalInteractiveModeBeforeSideEffects(t *testing.T) {
+	useVersion(t, "v0.1.0")
+	var events []string
+	want := validateInteractiveTerminal(false, true)
+
+	err := runCLI(nil, cliDependencies{
+		stdout: &bytes.Buffer{},
+		checkInteractiveTerminal: func() error {
+			events = append(events, "terminal")
+			return want
+		},
+		newUpdatePolicy: func() updatePolicy {
+			events = append(events, "construct-update-policy")
+			return &recordedUpdatePolicy{}
+		},
+		runInstaller: func(rootOptions) error {
+			events = append(events, "installer")
+			return nil
+		},
+	})
+
+	if !errors.Is(err, errInteractiveTerminalRequired) {
+		t.Fatalf("error = %v, want interactive terminal error", err)
+	}
+	if !reflect.DeepEqual(events, []string{"terminal"}) {
+		t.Fatalf("dispatch events = %v", events)
+	}
+}
+
+func TestValidateInteractiveTerminalReportsRedirectedStreams(t *testing.T) {
+	tests := []struct {
+		name        string
+		stdinTTY    bool
+		stdoutTTY   bool
+		wantStreams []string
+	}{
+		{name: "terminal input and output", stdinTTY: true, stdoutTTY: true},
+		{name: "redirected input", stdoutTTY: true, wantStreams: []string{"stdin"}},
+		{name: "redirected output", stdinTTY: true, wantStreams: []string{"stdout"}},
+		{name: "redirected input and output", wantStreams: []string{"stdin", "stdout"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateInteractiveTerminal(test.stdinTTY, test.stdoutTTY)
+			if len(test.wantStreams) == 0 {
+				if err != nil {
+					t.Fatalf("error = %v", err)
+				}
+				return
+			}
+
+			var terminalErr *interactiveTerminalError
+			if !errors.As(err, &terminalErr) {
+				t.Fatalf("error = %v, want *interactiveTerminalError", err)
+			}
+			if !reflect.DeepEqual(terminalErr.streams, test.wantStreams) {
+				t.Fatalf("streams = %v, want %v", terminalErr.streams, test.wantStreams)
+			}
+			if !strings.Contains(err.Error(), "--all") {
+				t.Fatalf("error does not explain non-interactive use: %v", err)
+			}
+		})
+	}
+}
+
+func TestIsTerminalRejectsPipe(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = reader.Close()
+		_ = writer.Close()
+	})
+
+	if isTerminal(reader) || isTerminal(writer) {
+		t.Fatal("pipe reported as a terminal")
+	}
+}
+
+func TestRunCLINonInteractiveFlowsBypassTerminalCheck(t *testing.T) {
+	useVersion(t, "v0.1.0")
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "all", args: []string{"--all"}},
+		{name: "all dry run", args: []string{"--all", "--dry-run"}},
+		{name: "version", args: []string{"version"}},
+		{name: "update", args: []string{"update"}},
+		{name: "verifier tasks", args: []string{"verifier-tasks", "snapshot", "--change", "demo"}},
+		{name: "openspec bootstrap", args: []string{"openspec-bootstrap"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			terminalChecks := 0
+			err := runCLI(test.args, cliDependencies{
+				stdout: &bytes.Buffer{},
+				checkInteractiveTerminal: func() error {
+					terminalChecks++
+					return validateInteractiveTerminal(false, false)
+				},
+				runInstaller:     func(rootOptions) error { return nil },
+				newUpdatePolicy:  func() updatePolicy { return &recordedUpdatePolicy{} },
+				workingDirectory: func() (string, error) { return "/repo", nil },
+				captureVerifierTasks: func(context.Context, verifiertasks.ResolveRequest) (verifiertasks.Result, error) {
+					return verifiertasks.Result{}, nil
+				},
+				runOpenSpecBootstrap: func(context.Context, openspecbootstrap.Request) (openspecbootstrap.Result, error) {
+					return openspecbootstrap.Result{}, nil
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if terminalChecks != 0 {
+				t.Fatalf("terminal checks = %d, want 0", terminalChecks)
 			}
 		})
 	}
@@ -453,7 +583,8 @@ func TestRunCLIDevSuppressesAutomaticAndForcedUpdates(t *testing.T) {
 			var stdout bytes.Buffer
 			installerCalls := 0
 			err := runCLI(test.args, cliDependencies{
-				stdout: &stdout,
+				stdout:                   &stdout,
+				checkInteractiveTerminal: func() error { return nil },
 				runInstaller: func(rootOptions) error {
 					installerCalls++
 					return nil
