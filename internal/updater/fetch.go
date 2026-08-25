@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,12 @@ import (
 	"time"
 )
 
-const RequestTimeout = 2 * time.Second
+const (
+	RequestTimeout          = 2 * time.Second
+	ArtifactRequestTimeout  = 2 * time.Minute
+	DefaultMaxManifestBytes = int64(64 << 10)
+	DefaultMaxArtifactBytes = int64(128 << 20)
+)
 
 // LatestManifestURL points directly at the manifest asset for the running
 // GOOS/GOARCH pair on the latest GitHub Release and does not use the GitHub
@@ -25,7 +31,7 @@ type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-func fetchManifest(ctx context.Context, client HTTPClient, manifestURL string, timeout time.Duration) (Manifest, error) {
+func fetchManifest(ctx context.Context, client HTTPClient, manifestURL string, timeout time.Duration, maxBytes int64) (Manifest, error) {
 	requestContext, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -42,8 +48,15 @@ func fetchManifest(ctx context.Context, client HTTPClient, manifestURL string, t
 	if response.StatusCode != http.StatusOK {
 		return Manifest{}, fmt.Errorf("fetching latest manifest: unexpected HTTP status %s", response.Status)
 	}
+	if response.ContentLength > maxBytes {
+		return Manifest{}, fmt.Errorf("fetching latest manifest: response exceeds %d bytes", maxBytes)
+	}
+	body, err := readAtMost(response.Body, maxBytes)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("fetching latest manifest: %w", err)
+	}
 
-	decoder := json.NewDecoder(response.Body)
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
@@ -59,4 +72,16 @@ func fetchManifest(ctx context.Context, client HTTPClient, manifestURL string, t
 		return Manifest{}, err
 	}
 	return manifest, nil
+}
+
+func readAtMost(reader io.Reader, maxBytes int64) ([]byte, error) {
+	limited := &io.LimitedReader{R: reader, N: maxBytes + 1}
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("response exceeds %d bytes", maxBytes)
+	}
+	return body, nil
 }

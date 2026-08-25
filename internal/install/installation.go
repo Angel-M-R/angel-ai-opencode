@@ -3,6 +3,7 @@ package install
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -28,6 +29,16 @@ type InstallationRequest struct {
 	// or empty map writes nothing, which is what the non-interactive path
 	// passes.
 	AgentModels AgentModelAssignments
+	// FileExpectations guard managed updates against changes made after
+	// planning. Files without an entry use normal installer reconciliation.
+	FileExpectations map[string]FileExpectation
+}
+
+// FileExpectation describes the state a managed destination must retain until
+// publication. SHA256 and Absent are mutually exclusive.
+type FileExpectation struct {
+	SHA256 string
+	Absent bool
 }
 
 type preparedFile struct {
@@ -74,40 +85,111 @@ func PlanInstallation(request InstallationRequest) ([]string, error) {
 // ApplyInstallation validates the complete desired state before performing any
 // package installation or file write, then applies only changed files.
 func ApplyInstallation(request InstallationRequest) ([]string, error) {
+	done, _, err := ApplyInstallationWithDigests(request)
+	return done, err
+}
+
+// ApplyInstallationWithDigests additionally reports the SHA-256 of the bytes
+// each managed destination held as this installation's transaction completed,
+// so callers can record a baseline that no concurrent installer can taint.
+func ApplyInstallationWithDigests(
+	request InstallationRequest,
+) (done []string, digests map[string]string, resultErr error) {
 	if err := preflightSelectedExtras(request.Extras, systemGlobalCLICommands.lookPath); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	lease, err := acquireInstallationLock(request.ConfigDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		if err := lease.release(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("releasing installation lock: %w", err))
+		}
+	}()
+	// Bind every validation and write to the canonical root whose lock we hold.
+	// Re-resolving request.ConfigDir later could adopt a retargeted symlink while
+	// still holding the old root's lock.
+	allowlist, err := newLockedManagedPathAllowlist(request.ConfigDir, lease.target)
+	if err != nil {
+		return nil, nil, err
 	}
 	prepared, err := prepareInstallationForApply(request)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if err := validatePreparedFiles(allowlist, prepared.files); err != nil {
+		return nil, nil, err
 	}
 	snapshot, err := preflightGlobalCLIs(prepared.globalCLIs, systemGlobalCLICommands)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	reprepareAfterCLIs := len(snapshot.inspections) > 0
-	var done []string
+	externalEffects := false
 	for _, inspection := range snapshot.inspections {
+		mayChangePackageManager := inspection.disposition == globalCLIInstall ||
+			inspection.disposition == globalCLIOutdated
 		line, err := applyGlobalCLIInspection(inspection, snapshot.manager, systemGlobalCLICommands)
 		if err != nil {
-			return done, err
+			return done, nil, withExternalEffectsNotice(err, externalEffects || mayChangePackageManager)
+		}
+		if mayChangePackageManager {
+			externalEffects = true
+			line += " [efecto externo, fuera del rollback de archivos]"
 		}
 		done = append(done, line)
 	}
 	if reprepareAfterCLIs {
 		prepared, err = prepareInstallationForApply(request)
 		if err != nil {
-			return done, err
+			return done, nil, withExternalEffectsNotice(err, externalEffects)
+		}
+		if err := validatePreparedFiles(allowlist, prepared.files); err != nil {
+			return done, nil, withExternalEffectsNotice(err, externalEffects)
 		}
 	}
-	for _, file := range prepared.files {
-		result, err := reconcileFile(file)
-		if err != nil {
-			return done, err
-		}
+	transaction, err := newInstallationTransaction(allowlist, prepared.files, request.FileExpectations)
+	if err != nil {
+		return done, nil, withExternalEffectsNotice(err, externalEffects)
+	}
+	results, err := transaction.apply()
+	if err != nil {
+		return done, nil, withExternalEffectsNotice(err, externalEffects)
+	}
+	for index, file := range prepared.files {
+		result := results[index]
 		done = append(done, fileResultLines(file.path, result)...)
 	}
-	return done, nil
+	return done, transaction.publishedDigests(), nil
+}
+
+// ManagedFilePaths returns the files the request reconciles under ConfigDir.
+// It uses the same preparation path as planning and applying, but it performs
+// no package installation or file write.
+func ManagedFilePaths(request InstallationRequest) ([]string, error) {
+	prepared, err := prepareInstallation(request)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(prepared.files))
+	seen := make(map[string]struct{}, len(prepared.files))
+	for _, file := range prepared.files {
+		if _, ok := seen[file.path]; ok {
+			continue
+		}
+		seen[file.path] = struct{}{}
+		paths = append(paths, file.path)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func withExternalEffectsNotice(err error, externalEffects bool) error {
+	if err == nil || !externalEffects {
+		return err
+	}
+	return fmt.Errorf("%w; external package-manager effects were not reverted", err)
 }
 
 func (file preparedFile) contentMatches(content []byte) bool {

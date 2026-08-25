@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,6 +94,29 @@ func run(t *testing.T, service *Service, request Request) Result {
 		t.Fatal(err)
 	}
 	return result
+}
+
+func TestSystemRunnerKeepsSuccessfulStderrOutOfStructuredOutput(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not available")
+	}
+	output, exitCode, err := newExecRunner().Run(
+		context.Background(),
+		t.TempDir(),
+		shell,
+		"-c",
+		`printf '%s' '{"root":"project"}'; printf '%s' 'warning' >&2`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, want 0", exitCode)
+	}
+	if got, want := string(output), `{"root":"project"}`; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
 }
 
 func TestRunBlocksWhenOpenSpecBinaryIsMissing(t *testing.T) {

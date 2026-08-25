@@ -15,6 +15,7 @@ type File interface {
 	io.Seeker
 	io.Closer
 	Name() string
+	Sync() error
 }
 
 // FileSystem isolates executable discovery and replacement operations.
@@ -27,6 +28,7 @@ type FileSystem interface {
 	Chmod(string, fs.FileMode) error
 	Rename(string, string) error
 	Remove(string) error
+	SyncDir(string) error
 }
 
 // Process isolates argument/environment capture and process replacement.
@@ -48,6 +50,14 @@ func (osFileSystem) CreateTemp(dir, pattern string) (File, error) {
 func (osFileSystem) Chmod(name string, mode fs.FileMode) error { return os.Chmod(name, mode) }
 func (osFileSystem) Rename(oldPath, newPath string) error      { return os.Rename(oldPath, newPath) }
 func (osFileSystem) Remove(name string) error                  { return os.Remove(name) }
+func (osFileSystem) SyncDir(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
+}
 
 type osProcess struct{}
 
