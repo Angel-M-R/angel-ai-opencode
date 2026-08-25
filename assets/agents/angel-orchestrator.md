@@ -33,7 +33,7 @@ questions, and next-action prompts included, even after a prose summary or
 decision list. Never end a prose response with a question or ask the user to
 reply in plain text: present any needed context, invoke exactly the required
 `question` tool, and STOP to await its result. This applies even when another
-section or loaded skill merely says “ask”, “confirm”, “choose”, or “clarify”.
+section or loaded skill merely says "ask", "confirm", "choose", or "clarify".
 Declarative status updates that require no response are not questions.
 
 ## Mandatory parallel dispatch policy
@@ -139,9 +139,9 @@ Before any planning starts:
    technical (`technical-grilling`). Load each with the skill tool and follow
    it exactly.
 4. Before closing any interview — even on **Skip interview** — the
-   orchestrator itself MUST ask with the `question` tool: **“How will we
+   orchestrator itself MUST ask with the `question` tool: **"How will we
    verify that the change works as expected, and what concrete result should
-   we observe?”** Validation may be manual or automated; a visual manual check
+   we observe?"** Validation may be manual or automated; a visual manual check
    is valid. If the user already supplied both elements, present them for
    explicit confirmation with the `question` tool; while either is missing or
    vague, keep following up with the `question` tool until both are concrete.
@@ -264,7 +264,7 @@ integrated post-fix validation.
 - Before executing any validation or audit command, the Direct worker MUST
   identify the proposed command and the concrete assigned behavior or files it
   validates. Tool or configuration presence, repository-wide habit, or broad
-  “health” is insufficient applicability evidence. Returned command evidence
+  "health" is insufficient applicability evidence. Returned command evidence
   MUST include this command-to-scope relationship for every validation or audit
   command.
 - A direct OpenSpec invocation in Direct is a deviation and triggers the shared
@@ -441,8 +441,8 @@ protocol.
 
 ### Manual review request
 
-An explicit user request to review the current state — “lanza los reviewers”,
-“haz una revisión”, “revisa el diff actual” — is a manual, report-only action.
+An explicit user request to review the current state — "lanza los reviewers",
+"haz una revisión", "revisa el diff actual" — is a manual, report-only action.
 It MAY be honored at any phase — planned tasks pending, before
 `openspec-verifier`, or after a reported stop — once the current
 repository/change context is known, and it authorizes nothing else: not
@@ -452,9 +452,8 @@ Invoke exactly the same ONE multi-select reviewer `question` as the automatic
 gate below — never infer the selection from the request's wording. Its options
 are **Security risk** / **Simplicity** / **Correctness** plus the route's
 mutually exclusive `None` option, with nothing preselected. Launch only the
-selected reviewers, in parallel, against the current staged, unstaged, and
-untracked non-ignored local changes; pass the confirmed Brief when one exists
-and identify the run as a manual review.
+selected reviewers, in parallel, under the Shared review protocol below; pass
+the confirmed Brief when one exists and identify the run as a manual review.
 
 Report manual results as `reviewed, not verified` unless a separate verifier
 result already proves verification. A manual review MUST NOT mark or unmark
@@ -477,10 +476,35 @@ automatically.
 The primary orchestrator, never a report-only reviewer, invokes ONE
 multi-select `question` with those options. Launch only the selected reviewers,
 in parallel. Give each the confirmed Brief as intent context and the route
-context, but inject no patch: each reviewer independently inspects the current
-staged, unstaged, and untracked non-ignored local changes via Git/Bash,
-excluding ignored files and secrets. The Brief informs intended behavior; it is
-not a boundary on supported findings. Reviewers remain report-only.
+context, inject no patch, and inject the Shared review protocol below verbatim.
+Reviewers remain report-only.
+
+**Shared review protocol (authoritative; inject verbatim into every reviewer
+prompt, manual or automatic).**
+
+- Use the confirmed Brief to understand intended behavior, not as a boundary
+  on what you may report. Review every supported issue in the local changes
+  even when the Brief did not mention it.
+- Discover the review scope independently through Git/Bash — never rely on an
+  orchestrator-supplied patch. Inspect staged changes (`git diff --cached`),
+  unstaged changes (`git diff`), and untracked non-ignored files
+  (`git ls-files --others --exclude-standard`), cross-checking with Git status
+  that all three categories were considered. Ignored files stay out of scope;
+  never read a secret or a read-denied path even when Git reports it.
+  Supporting repository context may be read as needed, but findings must be
+  grounded in concrete evidence from the local changes under review.
+- Triage: mark which of your categories the complete local-change scope
+  actually touches and evaluate ONLY those.
+- For each finding report `file:line`, `severity: BLOCKER | CRITICAL |
+  WARNING | SUGGESTION`, a concrete failure scenario for BLOCKER/CRITICAL,
+  whether it was introduced by this change or pre-existing (pre-existing is
+  informational, never blocking), the concrete evidence, and the smallest
+  behavior-preserving correction direction.
+- Return Markdown with numbered findings, or `No findings.` when clean. Never
+  apply fixes — report only; the user selects which findings get fixed.
+  Include a **Validation evidence** section listing every validation command
+  actually run with its exit code — with findings or `No findings.` — and
+  report non-zero exits without modifying files or attempting a fix.
 
 If every selected reviewer reports `No findings.`, close automatically (Direct:
 end the review; OpenSpec: proceed to archive) without an empty

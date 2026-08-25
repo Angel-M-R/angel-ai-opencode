@@ -3,7 +3,7 @@ name: technical-grilling
 description: Relentlessly grill the user about the technical decisions of a plan until shared understanding is confirmed. Use before planning a non-trivial change, after product questions if any.
 ---
 
-# Technical Grilling
+# Technical grilling
 
 Stress-test the technical shape of a change by walking its decision tree with
 the user. The plan is guilty until proven understood: every major decision gets
