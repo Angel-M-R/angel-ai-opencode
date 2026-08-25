@@ -208,6 +208,23 @@ test_first_install_on_linux_arm64() (
 	test_linux_install_fetches_platform_manifest arm64 aarch64 linux-arm64
 )
 
+test_linux_install_ignores_incompatible_plutil() (
+	setup_case || exit 1
+	trap cleanup_case 0
+	test_uname_s=Linux
+	test_uname_m=x86_64
+	cat >"$mock_bin/plutil" <<'EOF'
+#!/bin/sh
+printf 'plutil: invalid option -- %s\n' "${1-}" >&2
+exit 2
+EOF
+	chmod 0755 "$mock_bin/plutil" || exit 1
+	run_installer "$mock_bin:/usr/bin:/bin"
+	assert_equal "$installer_status" "0" "Linux install with libplist plutil in PATH failed: $installer_output" || exit 1
+	assert_installed_bytes || exit 1
+	assert_no_artifact_temps || exit 1
+)
+
 test_existing_binary_is_atomically_replaced() (
 	setup_case || exit 1
 	trap cleanup_case 0
@@ -320,6 +337,7 @@ run_test "unsupported hosts reject before download" test_unsupported_platforms_r
 run_test "supported first install" test_first_install_on_supported_platform
 run_test "linux amd64 first install" test_first_install_on_linux_amd64
 run_test "linux arm64 first install" test_first_install_on_linux_arm64
+run_test "linux install ignores incompatible plutil" test_linux_install_ignores_incompatible_plutil
 run_test "existing binary replacement" test_existing_binary_is_atomically_replaced
 run_test "manifest download failure preservation" test_manifest_download_failure_preserves_existing_binary
 run_test "invalid manifest preservation" test_invalid_manifests_preserve_existing_binary

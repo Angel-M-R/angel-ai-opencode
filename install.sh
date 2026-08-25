@@ -111,12 +111,14 @@ else
 	fail "required command 'shasum' or 'sha256sum' was not found; install one of them and run the installer again"
 fi
 
-if command -v plutil >/dev/null 2>&1; then
+# plutil is trusted only on macOS: Linux distributions ship an unrelated
+# plutil (libplist) that rejects the Apple-specific options used here.
+if [ "$operating_system" = Darwin ] && command -v plutil >/dev/null 2>&1; then
 	json_tool=plutil
 elif command -v python3 >/dev/null 2>&1; then
 	json_tool=python3
 else
-	fail "required command 'plutil' or 'python3' was not found; install one of them and run the installer again"
+	fail "required command 'plutil' (macOS) or 'python3' was not found; install one of them and run the installer again"
 fi
 
 manifest_temp=$(mktemp "${TMPDIR:-/tmp}/angel-ai-manifest.XXXXXX") || fail "unable to create a temporary manifest file"
