@@ -74,10 +74,11 @@ implementation units are clean and is responsible for the combined state.
 At the cohort audit boundary, reconcile every worker's start/end evidence
 against the pre-authorized exclusive scopes. An attributable change in a
 sibling's scope is reported and classified by that sibling, never silently
-omitted or claimed by another worker. Missing or ambiguous attribution, a
-change outside all assigned scopes, or overlap between sibling changes is a
-mandatory stop with normal scope and deviation handling; nothing is silently
-omitted.
+omitted or claimed by another worker. Classify every other observed state under
+the canonical state-and-result classification below. Missing or ambiguous
+attribution, sibling overlap, or a change outside all assigned scopes that
+qualifies for neither continuable category is a blocking deviation; nothing is
+silently omitted.
 
 Wait for every dispatched cohort member to settle before further dispatch. If
 any member triggers the shared mandatory-stop policy, retain all clean sibling
@@ -284,6 +285,9 @@ independence evidence>
 Direct validation-eligibility guard:
 <the complete Direct validation-eligibility guard above, verbatim>
 
+Canonical state-and-result classification:
+<the complete Canonical state-and-result classification below, verbatim>
+
 Obligations: implement only the assigned unit and run focused validation for
 its scope. For a single-unit Direct task, also run the repository's existing
 applicable tests and build commands as the integrated final validation.
@@ -301,10 +305,34 @@ This strict policy is the default for every implementation, verification, or
 control-point result, including the OpenSpec planning/artifact result that
 precedes implementation: initial Direct implementation, bounded Direct review
 fixes, OpenSpec bootstrap and target resolution, post-verification finding-ID
-fixes, and final OpenSpec verification. The SOLE
-exception: a section-bounded planned OpenSpec task batch selected from the
-active change's fresh `tasks.md` may use the planned-task self-repair rule
-defined below; it applies nowhere else.
+fixes, and final OpenSpec verification. A section-bounded planned OpenSpec task
+batch selected from the active change's fresh `tasks.md` may additionally use
+the planned-task self-repair rule defined below; that changes only who may
+repair an attributable failure, not the classification below.
+
+**Canonical state-and-result classification (authoritative; inject verbatim
+into every worker prompt).** After applying the corrected-failure rule
+where eligible, classify every unexpected result or state by proven cause and
+impact, regardless of Git visibility:
+
+- **Benign attributable local/output state:** fully attributable to an
+  authorized command, non-functional, and secret-free. Retain and report it
+  with its producer; never automatically clean, revert, delete, stage, or
+  commit it. It is non-blocking but grants no edit authority, widens no scope,
+  and never makes red evidence green.
+- **Continuable pre-existing/unrelated incident:** proven with complete causal
+  evidence and green validation relevant to the assigned scope and requested
+  final state. Retain and report it, never repair it, and never use it to hide
+  relevant red evidence.
+- **Blocking deviation:** any destructive action, secret exposure or
+  secret-bearing output, unauthorized functional change, sibling overlap,
+  ambiguous or missing attribution, relevant red validation, `partial` or
+  `blocked` result, actual scope expansion, or state that does not meet either
+  continuable category. Retain its evidence and apply the mandatory-stop
+  policy.
+
+Classify a command result separately from the state it leaves: continuable
+state never excuses a relevant command failure or authorizes unrelated repair.
 
 **Shared corrected-failure result fields** — the single authoritative field set
 for every result. Insert this exact list into `general` worker prompts; a
@@ -315,25 +343,17 @@ divergent local copy.
 - status (`done`, `partial`, or `blocked`);
 - files touched;
 - every command in execution order with its exit code;
-- for each non-zero command: the failed command and exit code, the diagnosed
-  cause, the bounded correction or successful authorized operation that
-  resolved it, and the later successful validation command and exit code with
-  evidence that it covers the failed command's relevant scope or proves the
-  requested final state;
+- for each non-zero command: the failed command and exit code, diagnosed cause,
+  and either the bounded correction or successful authorized operation plus
+  later successful equivalent-or-broader validation required by the corrected
+  failure rule, or the complete causal attribution and later green relevant
+  validation required by the continuable pre-existing/unrelated category;
 - final relevant validation state; and
 - deviations from the assigned Brief, change, task, or scope, including scope
-  expansion and out-of-scope work.
+  expansion and out-of-scope work, classified under the canonical categories.
 
 Internal read-only bookkeeping observations are not a result category: do not
 report them as findings, incidents, or deviations.
-
-**Generated validation outputs.** Output generated by an authorized
-validation command that exits zero (build caches, coverage files, lockfile
-refreshes) is not a deviation or out-of-scope work: report the paths with
-their producing command, retain the outputs in the workspace, and never
-clean, revert, stage, or commit them automatically. Generated output grants
-no manual-edit authority, never repairs a failed command, and never
-suppresses a stop caused by a destructive action.
 
 **Corrected intermediate failure.** Classify a non-zero intermediate command —
 a tooling mistake, a real failure, or an inspection-only probe that failed
@@ -345,8 +365,9 @@ successful authorized operation that resolved it, and a later successful
 validation command whose zero exit code covers a scope equivalent to or
 broader than the failed command's relevant scope or proves the requested
 final state; final status is `done` with a green final relevant validation
-state; and no deviation, scope expansion, or out-of-scope work is reported.
-An eligible corrected failure is clean under this policy: surface its
+state; and no blocking deviation is reported. Any other observed state must
+independently satisfy one of the two continuable canonical categories. An
+eligible corrected failure is clean under this policy: surface its
 complete ordered evidence and follow the control point's existing
 clean-result route without an authorization question, mandatory stop, or
 archive delay for that incident alone. Never hide or relabel the failed
@@ -355,14 +376,15 @@ mandatory-stop policy.
 
 **Mandatory stop** — any of these triggers it:
 
-- an intermediate non-zero command fails any corrected-failure condition above;
+- an intermediate non-zero command fails the corrected-failure conditions and
+  does not satisfy the continuable pre-existing/unrelated incident category;
 - any destructive action before or after a failed command;
 - correction evidence that is incomplete, spans different workers, or relies
   on a success that is unrelated, narrower than required, or does not prove
   the requested final state;
 - a red final relevant verification state;
 - status `partial` or `blocked`;
-- a reported deviation, scope expansion, or out-of-scope work; or
+- a blocking deviation under the canonical classification; or
 - a TDD or expected failure still red at batch end.
 
 On every mandatory stop, act in two ordered steps: FIRST report the blocking
@@ -382,14 +404,15 @@ to its bounded changes within the same invocation, for at most three
 repair/rerun cycles and only while each cycle makes demonstrable progress —
 changed diagnostic evidence, a narrower attributable cause, a completed
 necessary bounded correction, or improved relevant validation. Stop
-self-repair when a cycle makes no progress, the cap is reached, or the blocker
-is pre-existing or unrelated, then report the blocker with all retained
-command evidence; the orchestrator handles that result under the shared
-mandatory-stop policy. An additional read or a successful focused test of
-modified code is a benign, continuable deviation only when it serves the
-bounded batch. This rule applies nowhere else — never to Direct work,
-review-fix batches, bootstrap, target resolution, finding-ID fixes, or final
-verification — and never makes incomplete or red work complete.
+self-repair when a cycle makes no progress or the cap is reached. Never repair
+a pre-existing or unrelated incident: retain and report its complete causal
+evidence and classify it canonically, continuing only when relevant validation
+for the bounded batch and requested final state is green. Authorized reads and
+focused validation do not widen the batch; any local/output state they leave is
+continuable only when it satisfies the benign attributable category. This rule
+applies nowhere else — never to Direct work, review-fix batches, bootstrap,
+target resolution, finding-ID fixes, or final verification — and never makes
+incomplete or red work complete.
 
 ### Direct execution
 
@@ -617,6 +640,8 @@ Pass references, never artifact bodies. Planner and implementer prompts use:
 Invoke the official core skill <skill-name> for change <change-name>.
 Brief: <confirmed interview brief — planner only>
 Constraints: <scope limits; for the implementer, the exact task batch>
+Classification: <the complete Canonical state-and-result classification above,
+verbatim>
 Return: the Shared corrected-failure result fields, plus the route-specific
 next recommended action. For verification, also return verdict, task evidence,
 completion, conflicts, findings, and scenario coverage. Compact — no artifact
@@ -633,7 +658,9 @@ continue skill.
 
 The verifier prompt instead names the change and context and says to execute
 the Angel verification protocol; it MUST NOT name or request a non-core
-OpenSpec verification skill.
+OpenSpec verification skill. It carries the same `Classification:` line as the
+planner and implementer prompts — the complete Canonical state-and-result
+classification above, verbatim.
 
 Every OpenSpec worker prompt MUST state the bootstrap CodeGraph-ownership rule:
 the worker MUST NOT run `codegraph init`, and after a bootstrap warning it uses
@@ -651,8 +678,9 @@ Creating a change or reporting that its artifacts exist is not sufficient to
 start implementation. Before dispatching `openspec-implementer`, accept the
 planner only when its result is clean under the Shared corrected-failure result
 fields, has `status: done`, includes the artifact paths and next action, and
-has no unresolved evidence gap, deviation, scope expansion, or out-of-scope
-work.
+has no unresolved evidence gap or blocking deviation. Benign attributable
+state and evidence-complete pre-existing/unrelated incidents remain reportable
+and continuable under the canonical classification.
 
 If the planner mentions a non-zero command without the complete evidence
 required by its result contract, or omits any required field, treat the result
@@ -777,9 +805,11 @@ unchecked — anything under diagnosis or repair, red, blocked, or lacking
 validation; finishing a batch never by itself completes a task. The result
 contract is the Shared corrected-failure result fields plus repair-progress
 evidence and every directly-necessary supporting adjustment; the worker stops
-and reports out-of-batch writes, functional expansion, destructive commands,
-unresolvable OpenSpec state, or a checked-task/red-validation conflict instead
-of repairing or working around them. If fresh state shows the intended batch is
+and reports unauthorized functional out-of-batch writes, functional expansion,
+destructive commands, unresolvable OpenSpec state, or a
+checked-task/red-validation conflict instead of repairing or working around
+them. Benign attributable local/output state is retained and reported without
+widening the batch or stopping it. If fresh state shows the intended batch is
 already complete, skip the stale work and recompute the next batch.
 
 ### Implementation stops and completion routing
@@ -787,16 +817,17 @@ already complete, skip the stale work and recompute the next batch.
 After every standalone planned-batch result, or after every member of a
 parallel wave has settled, refresh state and classify under the shared
 implementation-result policy. Clean results — including evidence-complete
-corrected incidents and benign continuable deviations under the self-repair
-rule — continue automatically; every other result is a mandatory stop.
+corrected failures, benign attributable local/output state, and
+evidence-complete pre-existing/unrelated incidents with green relevant
+validation — continue automatically; every other result is a mandatory stop.
 
 Stop immediately and dispatch nothing further on any non-clean result, and in
-particular when the worker writes outside the assigned batch (including a
-claimed directly-necessary supporting adjustment, which needs user
-authorization through the stop policy, never self-approval), expands
-functional behavior, runs a destructive command or a full repository suite or
-build, fresh OpenSpec state cannot be resolved safely, or a checked task has
-relevant red validation. Never ignore red
+particular when the worker makes an unauthorized functional write outside the
+assigned batch (including a claimed directly-necessary supporting adjustment,
+which needs user authorization through the stop policy, never self-approval),
+expands functional behavior, runs a destructive command or a full repository
+suite or build, fresh OpenSpec state cannot be resolved safely, or a checked
+task has relevant red validation. Never ignore red
 evidence, manipulate checkboxes to remove a conflict, or relabel incomplete
 work as complete. Render the complete fresh tree when state is resolvable
 (report that it is unavailable when it is not), then apply the shared
