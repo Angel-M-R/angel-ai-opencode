@@ -21,11 +21,11 @@ func Apply(request install.InstallationRequest) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	report, err := install.ApplyInstallation(request)
+	report, digests, err := install.ApplyInstallationWithDigests(request)
 	if err != nil {
 		return report, err
 	}
-	state, err := stateFromRequest(request, targets)
+	state, err := stateFromRequest(request, targets, digests)
 	if err != nil {
 		return report, err
 	}
@@ -64,7 +64,7 @@ func Sync(source assets.Source, configDir string, dryRun bool) ([]string, error)
 	return Apply(request)
 }
 
-func stateFromRequest(request install.InstallationRequest, targets []string) (state, error) {
+func stateFromRequest(request install.InstallationRequest, targets []string, digests map[string]string) (state, error) {
 	bundleDigest, err := assets.Digest(request.Assets)
 	if err != nil {
 		return state{}, fmt.Errorf("digesting asset bundle: %w", err)
@@ -79,9 +79,12 @@ func stateFromRequest(request install.InstallationRequest, targets []string) (st
 		if err != nil {
 			return state{}, err
 		}
-		digest, err := digestFile(target)
-		if err != nil {
-			return state{}, fmt.Errorf("hashing managed file %s: %w", target, err)
+		// Digests come from the installer's transaction, not from re-reading
+		// the target: a re-read after the installation lock is released could
+		// record a concurrent installer's bytes as this baseline.
+		digest, ok := digests[target]
+		if !ok {
+			return state{}, fmt.Errorf("installer reported no digest for managed file %s", target)
 		}
 		files = append(files, managedFile{Path: relative, Digest: digest})
 	}
@@ -140,16 +143,17 @@ func requestFromState(saved state, source assets.Source, configDir string) (inst
 		}
 		available[category.Name] = items
 	}
+	// A saved category or asset the current bundle no longer offers is a
+	// normal lifecycle event, not a dead end: drop it from the rebuilt
+	// selection so the retired-file scan below can name its installed files
+	// and the inventory can advance once they are gone.
 	var selected []catalog.Item
 	for _, category := range saved.Selection.Categories {
-		items, ok := available[category.Name]
-		if !ok {
-			return install.InstallationRequest{}, nil, fmt.Errorf("saved category %q is absent from the current bundle", category.Name)
-		}
+		items := available[category.Name]
 		for _, sourcePath := range category.Sources {
 			item, ok := items[sourcePath]
 			if !ok {
-				return install.InstallationRequest{}, nil, fmt.Errorf("saved asset %q is absent from the current bundle", sourcePath)
+				continue
 			}
 			selected = append(selected, item)
 		}
@@ -201,7 +205,7 @@ func requestFromState(saved state, source assets.Source, configDir string) (inst
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		detail := "the current bundle no longer produces this selected directory child; sync leaves it in place"
+		detail := "the current bundle no longer produces this managed file; sync leaves it in place"
 		if err != nil {
 			detail = fmt.Sprintf("checking retired managed file: %v", err)
 		}
