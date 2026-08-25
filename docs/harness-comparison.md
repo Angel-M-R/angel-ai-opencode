@@ -19,8 +19,8 @@ declare a winner; it summarizes design differences.
 
 In my current experience, more capable models, good compaction, and better use
 of context reduce the need to divide work among many agents. <br/>
-Usualy I've gotten the same results using 2 agents as I have using 12, but cheaper.<br/>
-I think having an orchestrating agent and delegating to subagents makes sense, but forcing delegation just because there are specific agents It's making less and less sense as the models progress 
+Usually I've gotten the same results using 2 agents as I have using 12, but cheaper.<br/>
+I think having an orchestrating agent and delegating to subagents makes sense, but forcing delegation just because there are specific agents makes less and less sense as the models progress.
 
 ## Planning and interviews
 
@@ -34,7 +34,7 @@ Angel AI draws ideas from
 [`grill-me`](https://github.com/mattpocock/skills) and
 [`gstack`](https://github.com/garrytan/gstack) to challenge product requirements
 and technical decisions before writing the plan. <br/>
-It's much better to iterate before you start developing than after the code is already written 
+It's much better to iterate before you start developing than after the code is already written.
 
 ## Memory
 
@@ -51,8 +51,8 @@ In any case, if the retained context is poor, incomplete, or stale, it can misle
 |---|---|---|---|---|---|---|---|
 | Official OpenSpec | Custom SDD with Engram, OpenSpec, or both | Custom system | `/spec`: 5 phases, quality gate, and archive | Plans and guides; no dedicated spec lifecycle | Approved design + detailed implementation plan | PRD, architecture, stories, readiness, and validation | [Interviewed Markdown plans in `.omo/plans` + boulder-tracked execution](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/guide/orchestration.md#start-work-behavior-and-session-continuity) |
 
-I have been working with specs since January when the Ralph loop became popular, i have tried multiple tools like openspec, Spec Kit, BMAD, GSD, and skill to genearte ADR or PRD.<br/>
-I actualy have oficial openspec in this project but im planing to move to custom skills because i see a lot of unnecessary token spending on those Specs frameworks
+I have been working with specs since January when the Ralph loop became popular. I have tried multiple tools like OpenSpec, Spec Kit, BMAD, GSD, and skills to generate ADRs or PRDs.<br/>
+I actually have official OpenSpec in this project but I'm planning to move to custom skills because I see a lot of unnecessary token spending on those spec frameworks.
 
 
 ## Token savings and models
@@ -61,7 +61,7 @@ I actualy have oficial openspec in this project but im planing to move to custom
 |---|---|---|---|---|---|---|---|
 | No specific optimizer | No specific optimizer | Hashline: 61% fewer output tokens with Grok 4 Fast | Browser routing + token/cost benchmark; no general savings claim | Routing, strategic compaction, and cost-aware skills; no general percentage | Inherited from the harness; not applicable to the methodology | Web bundles with flat-rate subscriptions; no evidenced dynamic optimizer | [Category/model routing](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#category-system), [preemptive compaction, and output truncation](https://github.com/code-yeongyu/oh-my-openagent/blob/32d5a4e31746cf936e238ef31ea2cea53d5f02ac/docs/reference/features.md#truncation--context-management); no general percentage |
 
-I am skeptical for the optimizers, i saw in some benchmarks that It doesn´t result in an actual reduction in the number of tokens without affecting the model's performance, so im not usint it<br/>
+I am skeptical of the optimizers. I saw in some benchmarks that they don't result in an actual reduction in the number of tokens without affecting the model's performance, so I'm not using them:<br/>
 https://x.com/_Evan_Boyle/status/2068512891465293940?s=20<br/>
 https://x.com/Teknium/status/2067292705710031117?s=20
 

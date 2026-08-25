@@ -142,6 +142,19 @@ func TestCheckRejectsManifestRetrievalFailures(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsOversizedManifest(t *testing.T) {
+	updater := New(Config{
+		MaxManifestBytes: 32,
+		HTTP: httpClientFunc(func(*http.Request) (*http.Response, error) {
+			return manifestResponse(http.StatusOK, manifestJSON("v1.2.4")), nil
+		}),
+	})
+	_, err := updater.Check(context.Background(), "v1.2.3")
+	if err == nil || !strings.Contains(err.Error(), "exceeds 32 bytes") {
+		t.Fatalf("error = %v, want manifest size limit", err)
+	}
+}
+
 func TestManifestRequestUsesDirectURLAndTwoSecondTimeout(t *testing.T) {
 	wantURL := fmt.Sprintf("https://github.com/Angel-M-R/angel-ai-opencode/releases/latest/download/manifest-%s-%s.json", runtime.GOOS, runtime.GOARCH)
 	started := time.Now()

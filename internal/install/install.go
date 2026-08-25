@@ -3,13 +3,13 @@
 package install
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type pluginIdentityResolver func(any) string
@@ -30,64 +30,46 @@ type fileWriteResult struct {
 	backupPath string
 }
 
-func reconcileFile(file preparedFile) (fileWriteResult, error) {
-	previous, err := os.ReadFile(file.path)
-	created := false
-	switch {
-	case err == nil:
-		if file.contentMatches(previous) {
-			return fileWriteResult{}, nil
-		}
-	case os.IsNotExist(err):
-		created = true
-		previous = nil
-	default:
-		return fileWriteResult{}, err
-	}
+var beforeFilePublish = func(string) error { return nil }
 
-	result := fileWriteResult{changed: true, created: created}
-	if !created {
-		backupPath, err := writeBackup(file.path, previous)
-		if err != nil {
-			return fileWriteResult{}, fmt.Errorf("writing backup: %w", err)
+func verifyFileExpectation(
+	path string,
+	content []byte,
+	readErr error,
+	expectation FileExpectation,
+	guarded bool,
+	phase string,
+) error {
+	if !guarded {
+		return nil
+	}
+	if expectation.Absent {
+		if expectation.SHA256 != "" {
+			return fmt.Errorf("invalid file expectation for %s", path)
 		}
-		result.backupPath = backupPath
+		_, statErr := os.Lstat(path)
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		if statErr != nil {
+			return fmt.Errorf("checking managed file %s %s: %w", path, phase, statErr)
+		}
+		return fmt.Errorf("managed file expected to remain absent %s: %s", phase, path)
 	}
-
-	dir := filepath.Dir(file.path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fileWriteResult{}, err
+	if expectation.SHA256 == "" {
+		return fmt.Errorf("invalid file expectation for %s", path)
 	}
-	temp, err := os.CreateTemp(dir, ".angel-ai-*.tmp")
-	if err != nil {
-		return fileWriteResult{}, err
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return fmt.Errorf("managed file changed %s: %s is missing", phase, path)
+		}
+		return fmt.Errorf("checking managed file %s %s: %w", path, phase, readErr)
 	}
-	tempPath := temp.Name()
-	cleanup := func() {
-		_ = temp.Close()
-		_ = os.Remove(tempPath)
+	actual := fmt.Sprintf("%x", sha256.Sum256(content))
+	if actual != expectation.SHA256 {
+		return fmt.Errorf("managed file changed %s: %s", phase, path)
 	}
-	if err := temp.Chmod(file.perm); err != nil {
-		cleanup()
-		return fileWriteResult{}, err
-	}
-	if _, err := temp.Write(file.content); err != nil {
-		cleanup()
-		return fileWriteResult{}, err
-	}
-	if err := temp.Sync(); err != nil {
-		cleanup()
-		return fileWriteResult{}, err
-	}
-	if err := temp.Close(); err != nil {
-		_ = os.Remove(tempPath)
-		return fileWriteResult{}, err
-	}
-	if err := os.Rename(tempPath, file.path); err != nil {
-		_ = os.Remove(tempPath)
-		return fileWriteResult{}, err
-	}
-	return result, nil
+	return nil
 }
 
 func fileResultLines(path string, result fileWriteResult) []string {
@@ -104,44 +86,6 @@ func fileResultLines(path string, result fileWriteResult) []string {
 		lines = append(lines, "sin cambios "+path)
 	}
 	return lines
-}
-
-func writeBackup(targetPath string, content []byte) (string, error) {
-	pattern := "." + filepath.Base(targetPath) + ".bak-" + time.Now().Format("20060102-150405") + "-*"
-	backup, err := os.CreateTemp(filepath.Dir(targetPath), pattern)
-	if err != nil {
-		return "", err
-	}
-	tempPath := backup.Name()
-	backupPath := filepath.Join(filepath.Dir(targetPath), strings.TrimPrefix(filepath.Base(tempPath), "."))
-	cleanup := func() {
-		_ = backup.Close()
-		_ = os.Remove(tempPath)
-	}
-	if err := backup.Chmod(0o600); err != nil {
-		cleanup()
-		return "", err
-	}
-	if _, err := backup.Write(content); err != nil {
-		cleanup()
-		return "", err
-	}
-	if err := backup.Sync(); err != nil {
-		cleanup()
-		return "", err
-	}
-	if err := backup.Close(); err != nil {
-		_ = os.Remove(tempPath)
-		return "", err
-	}
-	if err := os.Link(tempPath, backupPath); err != nil {
-		_ = os.Remove(tempPath)
-		return "", err
-	}
-	if err := os.Remove(tempPath); err != nil {
-		return "", err
-	}
-	return backupPath, nil
 }
 
 // mergeWithPluginIdentity deep-merges src into dst. Objects merge recursively, plugin arrays are
