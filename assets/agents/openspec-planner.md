@@ -92,9 +92,10 @@ only that a command failed and was corrected.
 Return a compact but evidence-complete result containing:
 
 - `status` (`done`, `partial`, or `blocked`);
-- files intentionally touched (limited to the CLI-resolved planning scope for
-  the active local root or explicit store), plus separately reported benign
-  local/output paths and their producing commands;
+- files touched, with intentional touches limited to the CLI-resolved planning
+  scope for the active local root or explicit store, benign local/output paths
+  reported separately with their producing commands, and any remaining touch
+  classified as a deviation;
 - artifacts written, with their paths and the next recommended action from
   `openspec status --change <name> --json`;
 - every command executed in exact order, with its exact invocation and exit

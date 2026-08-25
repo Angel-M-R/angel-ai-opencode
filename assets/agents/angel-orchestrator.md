@@ -658,7 +658,9 @@ continue skill.
 
 The verifier prompt instead names the change and context and says to execute
 the Angel verification protocol; it MUST NOT name or request a non-core
-OpenSpec verification skill.
+OpenSpec verification skill. It carries the same `Classification:` line as the
+planner and implementer prompts — the complete Canonical state-and-result
+classification above, verbatim.
 
 Every OpenSpec worker prompt MUST state the bootstrap CodeGraph-ownership rule:
 the worker MUST NOT run `codegraph init`, and after a bootstrap warning it uses
