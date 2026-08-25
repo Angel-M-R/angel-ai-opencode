@@ -56,5 +56,7 @@ local changes never touch.
 
 ## Output notes
 
-Failure scenarios take the form "with input X, an unauthenticated caller
-can Y".
+Every security finding includes a one-line concrete failure scenario of the
+form "with input X, an unauthenticated caller can Y" — at every severity, not
+only where the shared protocol requires one. A security risk without a stated
+way to exercise it is not actionable.
