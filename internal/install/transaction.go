@@ -2,6 +2,7 @@ package install
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -10,14 +11,16 @@ import (
 )
 
 type transactionEntry struct {
-	file       preparedFile
-	path       string
-	allowlist  managedPathAllowlist
-	before     fileSnapshot
-	after      fileSnapshot
-	published  bool
-	backupPath string
-	backup     fileSnapshot
+	file        preparedFile
+	path        string
+	allowlist   managedPathAllowlist
+	before      fileSnapshot
+	after       fileSnapshot
+	published   bool
+	backupPath  string
+	backup      fileSnapshot
+	expectation FileExpectation
+	guarded     bool
 }
 
 type fileSnapshot struct {
@@ -59,7 +62,11 @@ func validatedPreparedPaths(allowlist managedPathAllowlist, files []preparedFile
 	return paths, nil
 }
 
-func newInstallationTransaction(allowlist managedPathAllowlist, files []preparedFile) (*installationTransaction, error) {
+func newInstallationTransaction(
+	allowlist managedPathAllowlist,
+	files []preparedFile,
+	expectations map[string]FileExpectation,
+) (*installationTransaction, error) {
 	paths, err := validatedPreparedPaths(allowlist, files)
 	if err != nil {
 		return nil, err
@@ -67,14 +74,50 @@ func newInstallationTransaction(allowlist managedPathAllowlist, files []prepared
 	transaction := &installationTransaction{entries: make([]*transactionEntry, 0, len(files))}
 	for index, file := range files {
 		entry := &transactionEntry{file: file, path: paths[index], allowlist: allowlist}
+		entry.expectation, entry.guarded = expectations[file.path]
 		before, err := captureFileSnapshot(entry.path, entry.allowlist)
 		if err != nil {
 			return nil, fmt.Errorf("capturing before-image %q: %w", entry.path, err)
 		}
 		entry.before = before
+		if err := entry.verifyExpectation(before, "after planning"); err != nil {
+			return nil, err
+		}
 		transaction.entries = append(transaction.entries, entry)
 	}
 	return transaction, nil
+}
+
+// verifyExpectation checks a guarded managed destination against the digest or
+// absence the caller planned from, translating a snapshot into the read result
+// shape verifyFileExpectation validates.
+func (entry *transactionEntry) verifyExpectation(snapshot fileSnapshot, phase string) error {
+	if !entry.guarded {
+		return nil
+	}
+	content := snapshot.content
+	var readErr error
+	if !snapshot.exists {
+		content = nil
+		readErr = os.ErrNotExist
+	}
+	return verifyFileExpectation(entry.file.path, content, readErr, entry.expectation, true, phase)
+}
+
+// publishedDigests reports the bytes each managed destination holds as this
+// transaction completed: the readback-verified published content for written
+// entries, the before-image for entries left unchanged. Computed from the
+// in-memory transaction, it cannot observe writes by any later process.
+func (transaction *installationTransaction) publishedDigests() map[string]string {
+	digests := make(map[string]string, len(transaction.entries))
+	for _, entry := range transaction.entries {
+		content := entry.before.content
+		if entry.published {
+			content = entry.file.content
+		}
+		digests[entry.file.path] = fmt.Sprintf("%x", sha256.Sum256(content))
+	}
+	return digests
 }
 
 func (transaction *installationTransaction) apply() ([]fileWriteResult, error) {
@@ -141,7 +184,20 @@ func applyTransactionEntry(entry *transactionEntry) (fileWriteResult, error) {
 		entry.path,
 		entry.file.content,
 		entry.file.perm,
-		func() error { return entry.verifySnapshot(entry.before, "managed file conflict") },
+		func() error {
+			if err := beforeFilePublish(entry.file.path); err != nil {
+				return err
+			}
+			if entry.guarded {
+				current, readErr := os.ReadFile(entry.file.path)
+				if err := verifyFileExpectation(
+					entry.file.path, current, readErr, entry.expectation, true, "before publication",
+				); err != nil {
+					return err
+				}
+			}
+			return entry.verifySnapshot(entry.before, "managed file conflict")
+		},
 	)
 	if publication.landed {
 		entry.after = fileSnapshot{

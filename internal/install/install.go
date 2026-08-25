@@ -3,7 +3,9 @@
 package install
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -26,6 +28,48 @@ type fileWriteResult struct {
 	changed    bool
 	created    bool
 	backupPath string
+}
+
+var beforeFilePublish = func(string) error { return nil }
+
+func verifyFileExpectation(
+	path string,
+	content []byte,
+	readErr error,
+	expectation FileExpectation,
+	guarded bool,
+	phase string,
+) error {
+	if !guarded {
+		return nil
+	}
+	if expectation.Absent {
+		if expectation.SHA256 != "" {
+			return fmt.Errorf("invalid file expectation for %s", path)
+		}
+		_, statErr := os.Lstat(path)
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		if statErr != nil {
+			return fmt.Errorf("checking managed file %s %s: %w", path, phase, statErr)
+		}
+		return fmt.Errorf("managed file expected to remain absent %s: %s", phase, path)
+	}
+	if expectation.SHA256 == "" {
+		return fmt.Errorf("invalid file expectation for %s", path)
+	}
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return fmt.Errorf("managed file changed %s: %s is missing", phase, path)
+		}
+		return fmt.Errorf("checking managed file %s %s: %w", path, phase, readErr)
+	}
+	actual := fmt.Sprintf("%x", sha256.Sum256(content))
+	if actual != expectation.SHA256 {
+		return fmt.Errorf("managed file changed %s: %s", phase, path)
+	}
+	return nil
 }
 
 func fileResultLines(path string, result fileWriteResult) []string {

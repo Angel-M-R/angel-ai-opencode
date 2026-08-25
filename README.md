@@ -18,6 +18,9 @@ The installer verifies the download and places the executable in
 angel-ai                       # opens the interactive wizard
 angel-ai version               # shows the installed version without network access
 angel-ai update                # forces an update check
+angel-ai doctor                # checks the saved bundle and managed files
+angel-ai sync --dry-run        # previews an update using the saved selection
+angel-ai sync                  # updates that selection from the current bundle
 ```
 
 ## Harness Design comparison
@@ -53,6 +56,29 @@ file by file, so files not managed by Angel AI remain untouched. `AGENTS.md` is
 the only full replacement; `opencode.json` and `tui.json` are merged with the
 existing configuration.
 
+After a successful installation, Angel AI writes
+`~/.config/opencode/.angel-ai-state.json`. The file records the selected assets,
+extras, agent model assignments, current asset bundle digest, and the digest of
+each installed file. `angel-ai doctor` compares that record without changing
+the target. `angel-ai sync` uses the same installer planner with the saved
+selection. It stops before writing if a managed file is missing or differs from
+the last recorded digest. It checks that digest again when the installer reads
+each destination for writing.
+
+The inventory hashes the complete bytes of merged JSON destinations such as
+`opencode.json`. `sync` does not infer field-level ownership, so any later edit
+to one of those files blocks the managed update. Rerun the wizard when you want
+to accept the current file as a new installation baseline.
+
+`sync` uses a conservative policy for selected directories. A file added to the
+new bundle is installed only if its destination is still absent. A file removed
+from the bundle is reported as `retired_file` while its installed copy remains;
+`doctor` and `sync` leave that copy and the old state unchanged. Move or remove
+the retired file, then rerun `sync` to update the inventory. The state file is
+saved after the installer finishes. If that final save fails, the command
+reports that the assets may already be installed and asks you to fix the target
+and rerun the installer.
+
 | File modified | What it is |
 |---|---|
 | **Agents config** | |
@@ -64,6 +90,7 @@ existing configuration.
 | `~/.config/opencode/themes/*.json` | Selected [themes](assets/themes/) are created or replaced. |
 | `~/.config/opencode/tui-plugins/*` | The selected [Angel AI TUI plugins](assets/tui-plugins/) are created or replaced. |
 | `~/.config/opencode/opencode.json` | The [MCP](assets/fragments/mcp.json), [permission](assets/fragments/permissions.json), and [settings](assets/fragments/settings.json) fragments are deep-merged into the existing configuration. Selected agent models, CodeGraph, and tsgo settings are also reconciled without removing unrelated keys. |
+| `~/.config/opencode/.angel-ai-state.json` | The versioned selection and file inventory used by `doctor` and `sync`. The state file is written atomically with mode `0600`. |
 
 ## Extras
 
@@ -95,4 +122,6 @@ go run .                  # opens the wizard
 go run . --all            # installs everything without the TUI
 go run . --all --dry-run  # shows the plan without changing anything
 go run . --target /path   # installs in another directory (for testing)
+go run . doctor --target /path
+go run . sync --dry-run --target /path
 ```
