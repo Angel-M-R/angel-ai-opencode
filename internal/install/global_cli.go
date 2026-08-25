@@ -1,12 +1,16 @@
 package install
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"angel-ai-opencode/internal/commandrunner"
 )
 
 const (
@@ -16,6 +20,8 @@ const (
 	tsgoRegistryPackage        = "@typescript/native-preview"
 	tsgoPackage                = tsgoRegistryPackage + "@latest"
 	openSpecMinimumNodeVersion = "20.19.0"
+	globalCLICommandTimeout    = 5 * time.Minute
+	globalCLIOutputLimit       = 1 << 20
 )
 
 var semanticVersionPattern = regexp.MustCompile(
@@ -84,22 +90,14 @@ var systemGlobalCLICommands = globalCLICommands{
 	run:      runGlobalCLICommand,
 }
 
+var systemGlobalCLIRunner = commandrunner.New(globalCLICommandTimeout, globalCLIOutputLimit)
+
 func runGlobalCLICommand(path string, args ...string) ([]byte, error) {
-	command := exec.Command(path, args...)
-	stdout, err := command.Output()
+	result, err := systemGlobalCLIRunner.RunGlobal(context.Background(), path, args...)
 	if err == nil {
-		return stdout, nil
+		return result.Stdout, nil
 	}
-	exitError, ok := err.(*exec.ExitError)
-	if !ok || len(exitError.Stderr) == 0 {
-		return stdout, err
-	}
-	output := append([]byte(nil), stdout...)
-	if len(output) > 0 && output[len(output)-1] != '\n' {
-		output = append(output, '\n')
-	}
-	output = append(output, exitError.Stderr...)
-	return output, err
+	return result.DiagnosticOutput(), err
 }
 
 type globalPackageManager struct {
