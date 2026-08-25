@@ -31,8 +31,8 @@ func ConfigurableAgents() []string {
 // reasoning effort levels; it is still written so a stale effort cannot survive
 // a model change.
 type AgentModelAssignment struct {
-	Model   string
-	Variant string
+	Model   string `json:"model"`
+	Variant string `json:"variant"`
 }
 
 // AgentModelAssignments maps an agent name to its assignment. A nil or empty

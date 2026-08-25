@@ -19,6 +19,7 @@ import (
 	"angel-ai-opencode/internal/assets"
 	"angel-ai-opencode/internal/catalog"
 	"angel-ai-opencode/internal/install"
+	"angel-ai-opencode/internal/managedassets"
 	"angel-ai-opencode/internal/openspecbootstrap"
 	"angel-ai-opencode/internal/tui"
 	"angel-ai-opencode/internal/updater"
@@ -112,6 +113,10 @@ func runCLI(args []string, dependencies cliDependencies) error {
 			return runVersionCommand(args[1:], dependencies)
 		case "update":
 			return runUpdateCommand(args[1:], dependencies)
+		case "sync":
+			return runSyncCommand(args[1:], dependencies)
+		case "doctor":
+			return runDoctorCommand(args[1:], dependencies)
 		case "verifier-tasks":
 			return runVerifierTasksCommand(args[1:], dependencies)
 		case "openspec-bootstrap":
@@ -302,6 +307,87 @@ func runUpdateCommand(args []string, dependencies cliDependencies) error {
 	return runUpdatePolicyFailOpen(true, dependencies)
 }
 
+func runSyncCommand(args []string, dependencies cliDependencies) error {
+	flags := flag.NewFlagSet("angel-ai sync", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	assetsDir := flags.String("assets", "", "assets directory override (default: embedded assets)")
+	configDir := flags.String("target", "", "opencode config directory (default: ~/.config/opencode)")
+	dryRun := flags.Bool("dry-run", false, "print the saved selection's plan without writing")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("sync: unexpected argument %q", flags.Arg(0))
+	}
+	source, err := sourceForAssets(*assetsDir)
+	if err != nil {
+		return err
+	}
+	target, err := resolveConfigDir(*configDir)
+	if err != nil {
+		return err
+	}
+	report, err := managedassets.Sync(source, target, *dryRun)
+	for _, line := range report {
+		if _, writeErr := fmt.Fprintln(dependencies.stdout, line); writeErr != nil {
+			return writeErr
+		}
+	}
+	return err
+}
+
+func runDoctorCommand(args []string, dependencies cliDependencies) error {
+	flags := flag.NewFlagSet("angel-ai doctor", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	assetsDir := flags.String("assets", "", "assets directory override (default: embedded assets)")
+	configDir := flags.String("target", "", "opencode config directory (default: ~/.config/opencode)")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("doctor: unexpected argument %q", flags.Arg(0))
+	}
+	source, err := sourceForAssets(*assetsDir)
+	if err != nil {
+		return err
+	}
+	target, err := resolveConfigDir(*configDir)
+	if err != nil {
+		return err
+	}
+	report, err := managedassets.Doctor(source, target)
+	if err != nil {
+		return err
+	}
+	if report.Healthy {
+		_, err := fmt.Fprintln(dependencies.stdout, "estado y archivos gestionados correctos")
+		return err
+	}
+	for _, finding := range report.Findings {
+		if _, err := fmt.Fprintln(dependencies.stdout, doctorFindingLine(finding)); err != nil {
+			return err
+		}
+	}
+	return fmt.Errorf("doctor encontró %d problema(s) en los assets gestionados", len(report.Findings))
+}
+
+func doctorFindingLine(finding managedassets.Finding) string {
+	switch finding.Code {
+	case managedassets.FindingStateMissing:
+		return "estado ausente      " + finding.Path
+	case managedassets.FindingBundleChanged:
+		return "bundle desactualizado " + finding.Expected + " -> " + finding.Actual
+	case managedassets.FindingFileMissing:
+		return "archivo ausente      " + finding.Path
+	case managedassets.FindingFileModified:
+		return "archivo modificado    " + finding.Path
+	case managedassets.FindingRetiredFile:
+		return "archivo retirado      " + finding.Path
+	default:
+		return "problema desconocido  " + finding.Path
+	}
+}
+
 func runUpdatePolicyFailOpen(forced bool, dependencies cliDependencies) error {
 	if err := runUpdatePolicy(forced, dependencies); err != nil {
 		_, warningErr := fmt.Fprintf(dependencies.stdout, "warning: update failed: %v\n", err)
@@ -326,12 +412,9 @@ func run(assetsDir, configDir string, all, dryRun bool) error {
 	if err != nil {
 		return err
 	}
-	if configDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		configDir = filepath.Join(home, ".config", "opencode")
+	configDir, err = resolveConfigDir(configDir)
+	if err != nil {
+		return err
 	}
 
 	categories, err := catalog.Load(assetSource)
@@ -364,13 +447,24 @@ func run(assetsDir, configDir string, all, dryRun bool) error {
 		}
 		return nil
 	}
-	report, err := install.ApplyInstallation(install.InstallationRequest{
+	report, err := managedassets.Apply(install.InstallationRequest{
 		Items: items, Extras: extras, Assets: assetSource, ConfigDir: configDir,
 	})
 	for _, line := range report {
 		fmt.Println(line)
 	}
 	return err
+}
+
+func resolveConfigDir(configDir string) (string, error) {
+	if configDir != "" {
+		return configDir, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "opencode"), nil
 }
 
 func sourceForAssets(directory string) (assets.Source, error) {
