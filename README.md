@@ -3,7 +3,7 @@
 
 ## Installation
 
-The initial distribution supports **macOS on Apple Silicon** only
+The initial distribution supports macOS on Apple Silicon only
 (`Darwin/arm64`). It does not require Go or cloning this repository. Install the
 latest stable version with:
 
@@ -23,10 +23,10 @@ angel-ai sync --dry-run        # previews an update using the saved selection
 angel-ai sync                  # updates that selection from the current bundle
 ```
 
-## Harness Design comparison
+## Harness design comparison
 
-The comparison brings together tables and explanations covering agents,
-planning, specs and more
+The comparison covers agents, planning and interviews, memory, specs, token
+savings, and final code review across eight harnesses.
 
 Because every OpenCode subagent can run on its own model, the harness can mix
 them by role: a highly capable model as the orchestrator, cheaper models as the
@@ -96,23 +96,23 @@ and rerun the installer.
 
 The last wizard step offers standalone integrations and UI toggles.
 
-- **[CodeGraph](https://github.com/colbymchenry/codegraph)** — installs the
+- **[CodeGraph](https://github.com/colbymchenry/codegraph)**: installs the
   CLI, registers the local MCP server, and appends its guidance to `AGENTS.md`.
-- **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** — installs or updates
+- **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**: installs or updates
   the official OpenSpec CLI.
-- **[tsgo](https://github.com/microsoft/typescript-go)** — installs or updates
+- **[tsgo](https://github.com/microsoft/typescript-go)**: installs or updates
   tsgo and configures it as the TypeScript LSP.
-- **[Angel AI logo](assets/tui-plugins/)** — custom ASCII logo plus MCP status
+- **[Angel AI logo](assets/tui-plugins/)**: custom ASCII logo plus MCP status
   in the TUI footer.
-- **[one-dark-pro theme](assets/themes/one-dark-pro.json)** — sets one-dark-pro
+- **[one-dark-pro theme](assets/themes/one-dark-pro.json)**: sets one-dark-pro
   as the TUI theme (`tui.json`).
-- **[Subagent statusline](https://github.com/Joaquinvesapa/sub-agent-statusline)**
-  — third-party npm plugin showing worker activity in the sidebar.
-- **[Open in App](https://github.com/Angel-M-R/opencode-open-in-app)** — npm
+- **[Subagent statusline](https://github.com/Joaquinvesapa/sub-agent-statusline)**:
+  third-party npm plugin showing worker activity in the sidebar.
+- **[Open in App](https://github.com/Angel-M-R/opencode-open-in-app)**: npm
   plugin that opens files and resources in their native applications.
-- **[OpenSpec task TUI](https://github.com/Angel-M-R/opencode-openspec-task-tui)**
-  — npm plugin showing OpenSpec task progress in the sidebar.
-- **[cmux](https://cmux.com)** — cmux notifications and Feed for OpenCode
+- **[OpenSpec task TUI](https://github.com/Angel-M-R/opencode-openspec-task-tui)**:
+  npm plugin showing OpenSpec task progress in the sidebar.
+- **[cmux](https://cmux.com)**: cmux notifications and Feed for OpenCode
   sessions.
 
 ## Usage from the repository
